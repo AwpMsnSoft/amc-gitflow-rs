@@ -4,7 +4,6 @@ mod commands;
 mod core;
 mod utils;
 
-
 #[derive(Parser)]
 #[command(name = "amc-gitflow-rs", version, about, long_about = None)]
 struct Cli {
