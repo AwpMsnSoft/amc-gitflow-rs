@@ -15,7 +15,7 @@ pub struct InitArgs {
     pub defaults: bool,
 }
 
-/// Run the init command with support for force and defaults.
+/// Initialize amc-gitflow-rs in the current repository. This will set up the necessary git branches and configuration for using amc-gitflow. If the repository is not already a git repository, it will be initialized as one. If amc-gitflow is already initialized, this command will do nothing unless the --force flag is used to reinitialize it.
 pub fn run(args: InitArgs) -> Result<()> {
     info!("Initializing amc-gitflow...");
 

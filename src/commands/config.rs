@@ -28,6 +28,7 @@ pub enum ConfigSubcommand {
     },
 }
 
+/// List, get, or set gitflow configuration values. This command requires amc-gitflow-rs to be initialized first.
 pub fn run(args: ConfigArgs) -> AnyResult<()> {
     if !GitflowConfig::load().is_ok() {
         error!("Not initialized for amc-gitflow. Run `amc-gitflow-rs init` first.");
