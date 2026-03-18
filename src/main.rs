@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use anyhow::Result as AnyResult;
 
 use crate::commands::init::{InitArgs, run as init_run};
+use crate::commands::config::{ConfigArgs, run as config_run};
 
 mod commands;
 mod core;
@@ -17,6 +18,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     Init(InitArgs),
+    Config(ConfigArgs),
     Features,
     Bugfix,
     Release,
@@ -28,6 +30,7 @@ fn main() -> AnyResult<()> {
 
     match cli.command {
         Commands::Init(args) => init_run(args)?,
+        Commands::Config(args) => config_run(args)?,
         Commands::Features => unimplemented!(),
         Commands::Bugfix => unimplemented!(),
         Commands::Release => unimplemented!(),

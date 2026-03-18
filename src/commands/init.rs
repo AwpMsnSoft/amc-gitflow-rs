@@ -62,7 +62,7 @@ pub fn run(args: InitArgs) -> Result<()> {
     config.save()?;
 
     // 6. Ensure branches exist
-    if !git::branch::exists(&config.master_branch)? {
+    if !git::branch::exists(&config.product_branch)? {
         // Fresh repo check: if current branch fails, we need an initial commit
         if git::branch::current().is_err() {
             info!("Creating initial commit...");
@@ -72,11 +72,11 @@ pub fn run(args: InitArgs) -> Result<()> {
 
     if !git::branch::exists(&config.develop_branch)? {
         info!("Creating {} branch...", config.develop_branch);
-        git::branch::create(&config.develop_branch, &config.master_branch)?;
+        git::branch::create(&config.develop_branch, &config.product_branch)?;
     }
 
     success!("Successfully initialized amc-gitflow!");
-    info!("Production branch: {}", config.master_branch);
+    info!("Production branch: {}", config.product_branch);
     info!("Development branch: {}", config.develop_branch);
 
     Ok(())

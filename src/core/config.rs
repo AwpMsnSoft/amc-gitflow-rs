@@ -1,102 +1,187 @@
 use anyhow::Result as AnyResult;
+use clap::ValueEnum;
 use colored::Colorize;
+use lazy_static::lazy_static;
+use std::collections::HashMap;
 use velvetio::prelude::*;
 
 use crate::core::git;
 
+#[derive(ValueEnum, Clone, Debug, PartialEq)]
+pub enum ConfigKey {
+    Product,
+    Develop,
+    Feature,
+    Release,
+    Hotfix,
+    Support,
+    Versiontag,
+}
+
+impl ConfigKey {
+    pub const VARIANTS: &'static [ConfigKey] = &[
+        ConfigKey::Product,
+        ConfigKey::Develop,
+        ConfigKey::Feature,
+        ConfigKey::Release,
+        ConfigKey::Hotfix,
+        ConfigKey::Support,
+        ConfigKey::Versiontag,
+    ];
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ConfigKey::Product => "product",
+            ConfigKey::Develop => "develop",
+            ConfigKey::Feature => "feature",
+            ConfigKey::Release => "release",
+            ConfigKey::Hotfix => "hotfix",
+            ConfigKey::Support => "support",
+            ConfigKey::Versiontag => "versiontag",
+        }
+    }
+}
+
 /// Gitflow configuration structure
 pub struct GitflowConfig {
-    pub master_branch: String,
+    pub product_branch: String,
     pub develop_branch: String,
     pub feature_prefix: String,
     pub release_prefix: String,
     pub hotfix_prefix: String,
     pub support_prefix: String,
-    pub version_tag_prefix: String,
+    pub versiontag_prefix: String,
+}
+
+lazy_static! {
+    pub static ref CONFIG_DESCRIPTIONS: HashMap<String, &'static str> = {
+        let mut m = HashMap::new();
+        m.insert("product".to_string(), "branch name for production releases");
+        m.insert(
+            "develop".to_string(),
+            "branch name for \"next release\" development",
+        );
+        m.insert("feature".to_string(), "prefix for feature branches");
+        m.insert("release".to_string(), "prefix for release branches");
+        m.insert("hotfix".to_string(), "prefix for hotfix branches");
+        m.insert("support".to_string(), "prefix for support branches");
+        m.insert("versiontag".to_string(), "prefix for version tags");
+        m
+    };
 }
 
 impl GitflowConfig {
     /// Create a new GitflowConfig with default values
     pub fn default() -> Self {
         Self {
-            master_branch: "master".to_string(),
+            product_branch: "master".to_string(),
             develop_branch: "develop".to_string(),
             feature_prefix: "feature/".to_string(),
             release_prefix: "release/".to_string(),
             hotfix_prefix: "hotfix/".to_string(),
             support_prefix: "support/".to_string(),
-            version_tag_prefix: "".to_string(),
+            versiontag_prefix: "".to_string(),
         }
     }
 
     /// Create a new GitflowConfig with console inputs
     pub fn new() -> Self {
         macro_rules! bold {
-            ($args: tt) => {{ $args.bold().to_string() }};
+            ($args: expr) => {{ $args.bold().to_string() }};
         }
 
-        let master_branch = ask!(
-            &bold!("Branch name for production releases"),
+        let product_branch = ask!(
+            &bold!(CONFIG_DESCRIPTIONS.get("product").unwrap()),
             default: "master".to_string()
         );
         let develop_branch = ask!(
-            &bold!("Branch name for \"next release\" development"),
+            &bold!(CONFIG_DESCRIPTIONS.get("develop").unwrap()),
             default: "develop".to_string()
         );
         let feature_prefix = ask!(
-            &bold!("Prefix for feature branches"),
+            &bold!(CONFIG_DESCRIPTIONS.get("feature").unwrap()),
             default: "feature/".to_string()
         );
         let release_prefix = ask!(
-            &bold!("Prefix for release branches"),
+            &bold!(CONFIG_DESCRIPTIONS.get("release").unwrap()),
             default: "release/".to_string()
         );
         let hotfix_prefix = ask!(
-            &bold!("Prefix for hotfix branches"),
+            &bold!(CONFIG_DESCRIPTIONS.get("hotfix").unwrap()),
             default: "hotfix/".to_string()
         );
         let support_prefix = ask!(
-            &bold!("Prefix for support branches"),
+            &bold!(CONFIG_DESCRIPTIONS.get("support").unwrap()),
             default: "support/".to_string()
         );
-        let version_tag_prefix = ask!(
-            &bold!("Prefix for version tags"),
+        let versiontag_prefix = ask!(
+            &bold!(CONFIG_DESCRIPTIONS.get("versiontag").unwrap()),
             default: "".to_string()
         );
 
         Self {
-            master_branch,
+            product_branch,
             develop_branch,
             feature_prefix,
             release_prefix,
             hotfix_prefix,
             support_prefix,
-            version_tag_prefix,
+            versiontag_prefix,
         }
     }
 
     /// Load current gitflow configuration from git config
     pub fn load() -> AnyResult<Self> {
         Ok(Self {
-            master_branch: git::config::get("amc-gitflow-rs.branch.master")?,
+            product_branch: git::config::get("amc-gitflow-rs.branch.product")?,
             develop_branch: git::config::get("amc-gitflow-rs.branch.develop")?,
             feature_prefix: git::config::get("amc-gitflow-rs.prefix.feature")?,
             release_prefix: git::config::get("amc-gitflow-rs.prefix.release")?,
             hotfix_prefix: git::config::get("amc-gitflow-rs.prefix.hotfix")?,
             support_prefix: git::config::get("amc-gitflow-rs.prefix.support")?,
-            version_tag_prefix: git::config::get("amc-gitflow-rs.prefix.versiontag")?,
+            versiontag_prefix: git::config::get("amc-gitflow-rs.prefix.versiontag")?,
         })
     }
 
     /// Save current configuration to git config
     pub fn save(&self) -> AnyResult<()> {
-        git::config::set("amc-gitflow-rs.branch.master", &self.master_branch)?;
+        git::config::set("amc-gitflow-rs.branch.product", &self.product_branch)?;
         git::config::set("amc-gitflow-rs.branch.develop", &self.develop_branch)?;
         git::config::set("amc-gitflow-rs.prefix.feature", &self.feature_prefix)?;
         git::config::set("amc-gitflow-rs.prefix.release", &self.release_prefix)?;
         git::config::set("amc-gitflow-rs.prefix.hotfix", &self.hotfix_prefix)?;
         git::config::set("amc-gitflow-rs.prefix.support", &self.support_prefix)?;
-        git::config::set("amc-gitflow-rs.prefix.versiontag", &self.version_tag_prefix)?;
+        git::config::set("amc-gitflow-rs.prefix.versiontag", &self.versiontag_prefix)?;
         Ok(())
+    }
+
+    /// Get a configuration value by key
+    pub fn get(&self, key: &str) -> String {
+        match key {
+            "product" => self.product_branch.clone(),
+            "develop" => self.develop_branch.clone(),
+            "feature" => self.feature_prefix.clone(),
+            "release" => self.release_prefix.clone(),
+            "hotfix" => self.hotfix_prefix.clone(),
+            "support" => self.support_prefix.clone(),
+            "versiontag" => self.versiontag_prefix.clone(),
+            _ => "".to_string(),
+        }
+    }
+
+    /// Set a configuration value by key
+    /// 
+    /// NOTE: This only updates the in-memory struct. You need to call `save()` to persist it to git config.
+    pub fn set(&mut self, key: &str, value: String) {
+        match key {
+            "product" => self.product_branch = value,
+            "develop" => self.develop_branch = value,
+            "feature" => self.feature_prefix = value,
+            "release" => self.release_prefix = value,
+            "hotfix" => self.hotfix_prefix = value,
+            "support" => self.support_prefix = value,
+            "versiontag" => self.versiontag_prefix = value,
+            _ => {}
+        }
     }
 }
