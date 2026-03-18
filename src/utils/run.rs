@@ -21,6 +21,7 @@ pub fn run(command: &str, args: &[&str]) -> AnyResult<String> {
     }
 }
 
+#[anyhow_context]
 pub fn run_uncheck(command: &str, args: &[&str]) -> AnyResult<()> {
     cmd(command, args).run()?;
 
