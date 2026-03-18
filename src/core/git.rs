@@ -7,6 +7,24 @@ pub fn is_installed() -> bool {
     run("git", &["--version"]).is_ok()
 }
 
+pub mod repo {
+    use super::*;
+
+    /// Initialize a new git repository
+    pub fn init() -> AnyResult<String> {
+        run("git", &["init"])
+    }
+}
+
+pub mod commit {
+    use super::*;
+
+    /// Create an initial empty commit
+    pub fn init() -> AnyResult<String> {
+        run("git", &["commit", "--allow-empty", "-m", "init(all): Workspace with initial commit"])
+    }
+}
+
 pub mod branch {
     use super::*;
 
@@ -53,7 +71,7 @@ pub mod merge {
 
     /// Merge a branch with fast-forward    
     pub fn fast_forward(name: &str) -> AnyResult<String> {
-        run("git", &["merge", name])
+        run("git", &["merge", "--ff", name])
     }
 
     /// Merge a branch without fast-forward
@@ -77,7 +95,7 @@ pub mod config {
 
     /// Set git config value
     pub fn set(key: &str, value: &str) -> AnyResult<String> {
-        run("git", &["config", key, value])
+        run("git", &["config", "set", key, value])
     }
 }
 

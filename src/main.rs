@@ -1,4 +1,7 @@
 use clap::{Parser, Subcommand};
+use anyhow::Result as AnyResult;
+
+use crate::commands::init::{InitArgs, run as init_run};
 
 mod commands;
 mod core;
@@ -13,13 +16,23 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    Init,
+    Init(InitArgs),
     Features,
     Bugfix,
     Release,
     Version
 }
 
-fn main() {
+fn main() -> AnyResult<()> {
     let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Init(args) => init_run(args)?,
+        Commands::Features => unimplemented!(),
+        Commands::Bugfix => unimplemented!(),
+        Commands::Release => unimplemented!(),
+        Commands::Version => unimplemented!(),
+    }
+
+    Ok(())
 }
