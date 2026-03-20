@@ -1,4 +1,4 @@
-use anyhow::{Result as AnyResult, bail};
+use anyhow::{Result as AnyResult, anyhow};
 use clap::{Args, Subcommand};
 
 use crate::core::config::{CONFIG_DESCRIPTIONS, ConfigKey, GitflowConfig};
@@ -30,12 +30,11 @@ pub enum ConfigSubcommand {
 
 /// List, get, or set gitflow configuration values. This command requires amc-gitflow-rs to be initialized first.
 pub fn run(args: ConfigArgs) -> AnyResult<()> {
-    if !GitflowConfig::load().is_ok() {
-        error!("Not initialized for amc-gitflow. Run `amc-gitflow-rs init` first.");
-        bail!("Not initialized for amc-gitflow.");
-    }
+    let mut config = GitflowConfig::load().map_err(|_| {
+        error!("Not initialized for amc-gitflow. Run 'amc-gitflow-rs init' first.");
+        anyhow!("Not initialized for amc-gitflow.")
+    })?;
 
-    let mut config = GitflowConfig::load()?;
     match args.command {
         ConfigSubcommand::List => {
             for key in ConfigKey::VARIANTS {
