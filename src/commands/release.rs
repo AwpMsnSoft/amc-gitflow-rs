@@ -4,6 +4,7 @@ use colored::Colorize;
 use velvetio::ask;
 
 use crate::core::{config::GitflowConfig, git};
+use crate::commands::version::get_current_version;
 use crate::{error, info, item, success};
 
 #[derive(Args, Debug)]
@@ -123,9 +124,12 @@ fn finish_release(config: &GitflowConfig, name: Option<String>) -> Result<()> {
         bail!("Release branch '{}' does not exist.", branch_name);
     }
 
+    let current_project_version = get_current_version()?;
+    let default_tag = format!("{}{}", config.versiontag_prefix, current_project_version);
+
     let tag_name: String;
     loop {
-        let input = ask!(&"Enter the tag name".bold().to_string());
+        let input = ask!(&"Enter the tag name".bold().to_string(), default: default_tag.clone());
         if input.trim().is_empty() {
             error!("Tag name cannot be empty.");
             continue;

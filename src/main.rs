@@ -6,6 +6,7 @@ use crate::commands::config::{ConfigArgs, run as config_run};
 use crate::commands::features::{FeatureArgs, run as feature_run};
 use crate::commands::bugfix::{BugfixArgs, run as bugfix_run};
 use crate::commands::release::{ReleaseArgs, run as release_run};
+use crate::commands::version::{VersionArgs, run as version_run};
 
 mod commands;
 mod core;
@@ -25,7 +26,7 @@ enum Commands {
     Features(FeatureArgs),
     Bugfix(BugfixArgs),
     Release(ReleaseArgs),
-    Version
+    Version(VersionArgs)
 }
 
 fn main() -> AnyResult<()> {
@@ -37,7 +38,7 @@ fn main() -> AnyResult<()> {
         Commands::Features(args) => feature_run(args)?,
         Commands::Bugfix(args) => bugfix_run(args)?,
         Commands::Release(args) => release_run(args)?,
-        Commands::Version => unimplemented!(),
+        Commands::Version(args) => version_run(args)?,
     }
 
     Ok(())

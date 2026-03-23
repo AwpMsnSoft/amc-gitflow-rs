@@ -51,6 +51,7 @@ pub struct GitflowConfig {
     pub bugfix_prefix: String,
     pub support_prefix: String,
     pub versiontag_prefix: String,
+    pub project_version: String,
 }
 
 lazy_static! {
@@ -81,6 +82,7 @@ impl GitflowConfig {
             bugfix_prefix: "bugfix/".to_string(),
             support_prefix: "support/".to_string(),
             versiontag_prefix: "".to_string(),
+            project_version: "0.1.0".to_string(),
         }
     }
 
@@ -91,31 +93,31 @@ impl GitflowConfig {
         }
 
         let product_branch = ask!(
-            &bold!(CONFIG_DESCRIPTIONS.get("product").unwrap()),
+            &bold!(CONFIG_DESCRIPTIONS.get("product").unwrap_or(&"product branch")),
             default: "master".to_string()
         );
         let develop_branch = ask!(
-            &bold!(CONFIG_DESCRIPTIONS.get("develop").unwrap()),
+            &bold!(CONFIG_DESCRIPTIONS.get("develop").unwrap_or(&"develop branch")),
             default: "develop".to_string()
         );
         let feature_prefix = ask!(
-            &bold!(CONFIG_DESCRIPTIONS.get("feature").unwrap()),
+            &bold!(CONFIG_DESCRIPTIONS.get("feature").unwrap_or(&"feature prefix")),
             default: "feature/".to_string()
         );
         let release_prefix = ask!(
-            &bold!(CONFIG_DESCRIPTIONS.get("release").unwrap()),
+            &bold!(CONFIG_DESCRIPTIONS.get("release").unwrap_or(&"release prefix")),
             default: "release/".to_string()
         );
         let bugfix_prefix = ask!(
-            &bold!(CONFIG_DESCRIPTIONS.get("bugfix").unwrap()),
+            &bold!(CONFIG_DESCRIPTIONS.get("bugfix").unwrap_or(&"bugfix prefix")),
             default: "bugfix/".to_string()
         );
         let support_prefix = ask!(
-            &bold!(CONFIG_DESCRIPTIONS.get("support").unwrap()),
+            &bold!(CONFIG_DESCRIPTIONS.get("support").unwrap_or(&"support prefix")),
             default: "support/".to_string()
         );
         let versiontag_prefix = ask!(
-            &bold!(CONFIG_DESCRIPTIONS.get("versiontag").unwrap()),
+            &bold!(CONFIG_DESCRIPTIONS.get("versiontag").unwrap_or(&"versiontag prefix")),
             default: "".to_string()
         );
 
@@ -127,6 +129,7 @@ impl GitflowConfig {
             bugfix_prefix,
             support_prefix,
             versiontag_prefix,
+            project_version: "0.1.0".to_string(),
         }
     }
 
@@ -140,6 +143,7 @@ impl GitflowConfig {
             bugfix_prefix: git::config::get("amc-gitflow-rs.prefix.bugfix")?,
             support_prefix: git::config::get("amc-gitflow-rs.prefix.support")?,
             versiontag_prefix: git::config::get("amc-gitflow-rs.prefix.versiontag")?,
+            project_version: git::config::get("amc-gitflow-rs.project.version").unwrap_or_else(|_| "0.1.0".to_string()),
         })
     }
 
@@ -152,6 +156,7 @@ impl GitflowConfig {
         git::config::set("amc-gitflow-rs.prefix.bugfix", &self.bugfix_prefix)?;
         git::config::set("amc-gitflow-rs.prefix.support", &self.support_prefix)?;
         git::config::set("amc-gitflow-rs.prefix.versiontag", &self.versiontag_prefix)?;
+        git::config::set("amc-gitflow-rs.project.version", &self.project_version)?;
         Ok(())
     }
 
@@ -165,6 +170,7 @@ impl GitflowConfig {
             "bugfix" => self.bugfix_prefix.clone(),
             "support" => self.support_prefix.clone(),
             "versiontag" => self.versiontag_prefix.clone(),
+            "version" => self.project_version.clone(),
             _ => "".to_string(),
         }
     }
@@ -181,6 +187,7 @@ impl GitflowConfig {
             "bugfix" => self.bugfix_prefix = value,
             "support" => self.support_prefix = value,
             "versiontag" => self.versiontag_prefix = value,
+            "version" => self.project_version = value,
             _ => {}
         }
     }
