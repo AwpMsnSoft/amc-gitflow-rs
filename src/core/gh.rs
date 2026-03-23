@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use anyhow::Result as AnyResult;
 
 use crate::utils::run::run;

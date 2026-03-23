@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use anyhow::{Context, Result as AnyResult, bail};
 use auto_context::auto_context as anyhow_context;
 use duct::cmd;

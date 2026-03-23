@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use anyhow::Result as AnyResult;
 
 use crate::utils::run::run;
@@ -107,6 +109,11 @@ pub mod remote {
         run("git", &["push", remote, branch])
     }
 
+    /// Push a branch to remote and set upstream tracking
+    pub fn push_upstream(remote: &str, branch: &str) -> AnyResult<String> {
+        run("git", &["push", "-u", remote, branch])
+    }
+
     /// Pull from remote
     pub fn pull(remote: &str, branch: &str) -> AnyResult<String> {
         run("git", &["pull", remote, branch])
@@ -115,6 +122,12 @@ pub mod remote {
     /// Fetch from remote
     pub fn fetch(remote: &str) -> AnyResult<String> {
         run("git", &["fetch", remote])
+    }
+
+    /// Check if a branch exists on a remote
+    pub fn branch_exists(remote: &str, branch: &str) -> AnyResult<bool> {
+        let output = run("git", &["ls-remote", "--heads", remote, branch])?;
+        Ok(!output.is_empty())
     }
 }
 
@@ -130,6 +143,12 @@ pub mod status {
 
 pub mod tag {
     use super::*;
+
+    /// Check if a tag exists
+    pub fn exists(name: &str) -> AnyResult<bool> {
+        let output = run("git", &["tag", "--list", name])?;
+        Ok(!output.is_empty())
+    }
 
     /// Tag a commit
     pub fn create(name: &str, message: &str) -> AnyResult<String> {
