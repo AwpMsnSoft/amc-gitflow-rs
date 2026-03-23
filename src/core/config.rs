@@ -13,7 +13,7 @@ pub enum ConfigKey {
     Develop,
     Feature,
     Release,
-    Hotfix,
+    Bugfix,
     Support,
     Versiontag,
 }
@@ -24,7 +24,7 @@ impl ConfigKey {
         ConfigKey::Develop,
         ConfigKey::Feature,
         ConfigKey::Release,
-        ConfigKey::Hotfix,
+        ConfigKey::Bugfix,
         ConfigKey::Support,
         ConfigKey::Versiontag,
     ];
@@ -35,7 +35,7 @@ impl ConfigKey {
             ConfigKey::Develop => "develop",
             ConfigKey::Feature => "feature",
             ConfigKey::Release => "release",
-            ConfigKey::Hotfix => "hotfix",
+            ConfigKey::Bugfix => "bugfix",
             ConfigKey::Support => "support",
             ConfigKey::Versiontag => "versiontag",
         }
@@ -48,7 +48,7 @@ pub struct GitflowConfig {
     pub develop_branch: String,
     pub feature_prefix: String,
     pub release_prefix: String,
-    pub hotfix_prefix: String,
+    pub bugfix_prefix: String,
     pub support_prefix: String,
     pub versiontag_prefix: String,
 }
@@ -63,7 +63,7 @@ lazy_static! {
         );
         m.insert("feature".to_string(), "prefix for feature branches");
         m.insert("release".to_string(), "prefix for release branches");
-        m.insert("hotfix".to_string(), "prefix for hotfix branches");
+        m.insert("bugfix".to_string(), "prefix for bugfix branches");
         m.insert("support".to_string(), "prefix for support branches");
         m.insert("versiontag".to_string(), "prefix for version tags");
         m
@@ -78,7 +78,7 @@ impl GitflowConfig {
             develop_branch: "develop".to_string(),
             feature_prefix: "feature/".to_string(),
             release_prefix: "release/".to_string(),
-            hotfix_prefix: "hotfix/".to_string(),
+            bugfix_prefix: "bugfix/".to_string(),
             support_prefix: "support/".to_string(),
             versiontag_prefix: "".to_string(),
         }
@@ -106,9 +106,9 @@ impl GitflowConfig {
             &bold!(CONFIG_DESCRIPTIONS.get("release").unwrap()),
             default: "release/".to_string()
         );
-        let hotfix_prefix = ask!(
-            &bold!(CONFIG_DESCRIPTIONS.get("hotfix").unwrap()),
-            default: "hotfix/".to_string()
+        let bugfix_prefix = ask!(
+            &bold!(CONFIG_DESCRIPTIONS.get("bugfix").unwrap()),
+            default: "bugfix/".to_string()
         );
         let support_prefix = ask!(
             &bold!(CONFIG_DESCRIPTIONS.get("support").unwrap()),
@@ -124,7 +124,7 @@ impl GitflowConfig {
             develop_branch,
             feature_prefix,
             release_prefix,
-            hotfix_prefix,
+            bugfix_prefix,
             support_prefix,
             versiontag_prefix,
         }
@@ -137,7 +137,7 @@ impl GitflowConfig {
             develop_branch: git::config::get("amc-gitflow-rs.branch.develop")?,
             feature_prefix: git::config::get("amc-gitflow-rs.prefix.feature")?,
             release_prefix: git::config::get("amc-gitflow-rs.prefix.release")?,
-            hotfix_prefix: git::config::get("amc-gitflow-rs.prefix.hotfix")?,
+            bugfix_prefix: git::config::get("amc-gitflow-rs.prefix.bugfix")?,
             support_prefix: git::config::get("amc-gitflow-rs.prefix.support")?,
             versiontag_prefix: git::config::get("amc-gitflow-rs.prefix.versiontag")?,
         })
@@ -149,7 +149,7 @@ impl GitflowConfig {
         git::config::set("amc-gitflow-rs.branch.develop", &self.develop_branch)?;
         git::config::set("amc-gitflow-rs.prefix.feature", &self.feature_prefix)?;
         git::config::set("amc-gitflow-rs.prefix.release", &self.release_prefix)?;
-        git::config::set("amc-gitflow-rs.prefix.hotfix", &self.hotfix_prefix)?;
+        git::config::set("amc-gitflow-rs.prefix.bugfix", &self.bugfix_prefix)?;
         git::config::set("amc-gitflow-rs.prefix.support", &self.support_prefix)?;
         git::config::set("amc-gitflow-rs.prefix.versiontag", &self.versiontag_prefix)?;
         Ok(())
@@ -162,7 +162,7 @@ impl GitflowConfig {
             "develop" => self.develop_branch.clone(),
             "feature" => self.feature_prefix.clone(),
             "release" => self.release_prefix.clone(),
-            "hotfix" => self.hotfix_prefix.clone(),
+            "bugfix" => self.bugfix_prefix.clone(),
             "support" => self.support_prefix.clone(),
             "versiontag" => self.versiontag_prefix.clone(),
             _ => "".to_string(),
@@ -178,7 +178,7 @@ impl GitflowConfig {
             "develop" => self.develop_branch = value,
             "feature" => self.feature_prefix = value,
             "release" => self.release_prefix = value,
-            "hotfix" => self.hotfix_prefix = value,
+            "bugfix" => self.bugfix_prefix = value,
             "support" => self.support_prefix = value,
             "versiontag" => self.versiontag_prefix = value,
             _ => {}
