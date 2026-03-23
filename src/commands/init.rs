@@ -1,7 +1,10 @@
 use anyhow::{Result, bail};
 use clap::Args;
 
-use crate::core::{config::GitflowConfig, gh, git};
+use crate::core::{
+    config::{ConfigKey, GitflowConfig},
+    gh, git,
+};
 use crate::{error, info, success, warn};
 
 #[derive(Args, Debug)]
@@ -62,7 +65,7 @@ pub fn run(args: InitArgs) -> Result<()> {
     config.save()?;
 
     // 6. Ensure branches exist
-    if !git::branch::exists(&config.product_branch)? {
+    if !git::branch::exists(&config.get(ConfigKey::Product))? {
         // Fresh repo check: if current branch fails, we need an initial commit
         if git::branch::current().is_err() {
             info!("Creating initial commit...");
@@ -70,14 +73,17 @@ pub fn run(args: InitArgs) -> Result<()> {
         }
     }
 
-    if !git::branch::exists(&config.develop_branch)? {
-        info!("Creating {} branch...", config.develop_branch);
-        git::branch::create(&config.develop_branch, &config.product_branch)?;
+    if !git::branch::exists(&config.get(ConfigKey::Develop))? {
+        info!("Creating {} branch...", config.get(ConfigKey::Develop));
+        git::branch::create(
+            &config.get(ConfigKey::Develop),
+            &config.get(ConfigKey::Product),
+        )?;
     }
 
     success!("Successfully initialized amc-gitflow!");
-    info!("Production branch: {}", config.product_branch);
-    info!("Development branch: {}", config.develop_branch);
+    info!("Production branch: {}", config.get(ConfigKey::Product));
+    info!("Development branch: {}", config.get(ConfigKey::Develop));
 
     Ok(())
 }

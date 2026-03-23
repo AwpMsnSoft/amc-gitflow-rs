@@ -7,7 +7,7 @@ use velvetio::prelude::*;
 
 use crate::core::git;
 
-#[derive(ValueEnum, Clone, Debug, PartialEq)]
+#[derive(ValueEnum, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ConfigKey {
     Product,
     Develop,
@@ -16,6 +16,7 @@ pub enum ConfigKey {
     Bugfix,
     Support,
     Versiontag,
+    Version,
 }
 
 impl ConfigKey {
@@ -27,46 +28,36 @@ impl ConfigKey {
         ConfigKey::Bugfix,
         ConfigKey::Support,
         ConfigKey::Versiontag,
+        ConfigKey::Version,
     ];
-
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            ConfigKey::Product => "product",
-            ConfigKey::Develop => "develop",
-            ConfigKey::Feature => "feature",
-            ConfigKey::Release => "release",
-            ConfigKey::Bugfix => "bugfix",
-            ConfigKey::Support => "support",
-            ConfigKey::Versiontag => "versiontag",
-        }
-    }
 }
 
 /// Gitflow configuration structure
 pub struct GitflowConfig {
-    pub product_branch: String,
-    pub develop_branch: String,
-    pub feature_prefix: String,
-    pub release_prefix: String,
-    pub bugfix_prefix: String,
-    pub support_prefix: String,
-    pub versiontag_prefix: String,
-    pub project_version: String,
+    product_branch: String,
+    develop_branch: String,
+    feature_prefix: String,
+    release_prefix: String,
+    bugfix_prefix: String,
+    support_prefix: String,
+    versiontag_prefix: String,
+    project_version: String,
 }
 
 lazy_static! {
-    pub static ref CONFIG_DESCRIPTIONS: HashMap<String, &'static str> = {
+    pub static ref CONFIG_DESCRIPTIONS: HashMap<ConfigKey, &'static str> = {
         let mut m = HashMap::new();
-        m.insert("product".to_string(), "branch name for production releases");
+        m.insert(ConfigKey::Product, "branch name for production releases");
         m.insert(
-            "develop".to_string(),
+            ConfigKey::Develop,
             "branch name for \"next release\" development",
         );
-        m.insert("feature".to_string(), "prefix for feature branches");
-        m.insert("release".to_string(), "prefix for release branches");
-        m.insert("bugfix".to_string(), "prefix for bugfix branches");
-        m.insert("support".to_string(), "prefix for support branches");
-        m.insert("versiontag".to_string(), "prefix for version tags");
+        m.insert(ConfigKey::Feature, "prefix for feature branches");
+        m.insert(ConfigKey::Release, "prefix for release branches");
+        m.insert(ConfigKey::Bugfix, "prefix for bugfix branches");
+        m.insert(ConfigKey::Support, "prefix for support branches");
+        m.insert(ConfigKey::Versiontag, "prefix for version tags");
+        m.insert(ConfigKey::Version, "current project version");
         m
     };
 }
@@ -93,31 +84,31 @@ impl GitflowConfig {
         }
 
         let product_branch = ask!(
-            &bold!(CONFIG_DESCRIPTIONS.get("product").unwrap_or(&"product branch")),
+            &bold!(CONFIG_DESCRIPTIONS.get(&ConfigKey::Product).unwrap_or(&"product branch")),
             default: "master".to_string()
         );
         let develop_branch = ask!(
-            &bold!(CONFIG_DESCRIPTIONS.get("develop").unwrap_or(&"develop branch")),
+            &bold!(CONFIG_DESCRIPTIONS.get(&ConfigKey::Develop).unwrap_or(&"develop branch")),
             default: "develop".to_string()
         );
         let feature_prefix = ask!(
-            &bold!(CONFIG_DESCRIPTIONS.get("feature").unwrap_or(&"feature prefix")),
+            &bold!(CONFIG_DESCRIPTIONS.get(&ConfigKey::Feature).unwrap_or(&"feature prefix")),
             default: "feature/".to_string()
         );
         let release_prefix = ask!(
-            &bold!(CONFIG_DESCRIPTIONS.get("release").unwrap_or(&"release prefix")),
+            &bold!(CONFIG_DESCRIPTIONS.get(&ConfigKey::Release).unwrap_or(&"release prefix")),
             default: "release/".to_string()
         );
         let bugfix_prefix = ask!(
-            &bold!(CONFIG_DESCRIPTIONS.get("bugfix").unwrap_or(&"bugfix prefix")),
+            &bold!(CONFIG_DESCRIPTIONS.get(&ConfigKey::Bugfix).unwrap_or(&"bugfix prefix")),
             default: "bugfix/".to_string()
         );
         let support_prefix = ask!(
-            &bold!(CONFIG_DESCRIPTIONS.get("support").unwrap_or(&"support prefix")),
+            &bold!(CONFIG_DESCRIPTIONS.get(&ConfigKey::Support).unwrap_or(&"support prefix")),
             default: "support/".to_string()
         );
         let versiontag_prefix = ask!(
-            &bold!(CONFIG_DESCRIPTIONS.get("versiontag").unwrap_or(&"versiontag prefix")),
+            &bold!(CONFIG_DESCRIPTIONS.get(&ConfigKey::Versiontag).unwrap_or(&"versiontag prefix")),
             default: "".to_string()
         );
 
@@ -143,7 +134,8 @@ impl GitflowConfig {
             bugfix_prefix: git::config::get("amc-gitflow-rs.prefix.bugfix")?,
             support_prefix: git::config::get("amc-gitflow-rs.prefix.support")?,
             versiontag_prefix: git::config::get("amc-gitflow-rs.prefix.versiontag")?,
-            project_version: git::config::get("amc-gitflow-rs.project.version").unwrap_or_else(|_| "0.1.0".to_string()),
+            project_version: git::config::get("amc-gitflow-rs.project.version")
+                .unwrap_or_else(|_| "0.1.0".to_string()),
         })
     }
 
@@ -161,34 +153,32 @@ impl GitflowConfig {
     }
 
     /// Get a configuration value by key
-    pub fn get(&self, key: &str) -> String {
+    pub fn get(&self, key: ConfigKey) -> String {
         match key {
-            "product" => self.product_branch.clone(),
-            "develop" => self.develop_branch.clone(),
-            "feature" => self.feature_prefix.clone(),
-            "release" => self.release_prefix.clone(),
-            "bugfix" => self.bugfix_prefix.clone(),
-            "support" => self.support_prefix.clone(),
-            "versiontag" => self.versiontag_prefix.clone(),
-            "version" => self.project_version.clone(),
-            _ => "".to_string(),
+            ConfigKey::Product => self.product_branch.clone(),
+            ConfigKey::Develop => self.develop_branch.clone(),
+            ConfigKey::Feature => self.feature_prefix.clone(),
+            ConfigKey::Release => self.release_prefix.clone(),
+            ConfigKey::Bugfix => self.bugfix_prefix.clone(),
+            ConfigKey::Support => self.support_prefix.clone(),
+            ConfigKey::Versiontag => self.versiontag_prefix.clone(),
+            ConfigKey::Version => self.project_version.clone(),
         }
     }
 
     /// Set a configuration value by key
-    /// 
+    ///
     /// NOTE: This only updates the in-memory struct. You need to call `save()` to persist it to git config.
-    pub fn set(&mut self, key: &str, value: String) {
+    pub fn set(&mut self, key: ConfigKey, value: String) {
         match key {
-            "product" => self.product_branch = value,
-            "develop" => self.develop_branch = value,
-            "feature" => self.feature_prefix = value,
-            "release" => self.release_prefix = value,
-            "bugfix" => self.bugfix_prefix = value,
-            "support" => self.support_prefix = value,
-            "versiontag" => self.versiontag_prefix = value,
-            "version" => self.project_version = value,
-            _ => {}
+            ConfigKey::Product => self.product_branch = value,
+            ConfigKey::Develop => self.develop_branch = value,
+            ConfigKey::Feature => self.feature_prefix = value,
+            ConfigKey::Release => self.release_prefix = value,
+            ConfigKey::Bugfix => self.bugfix_prefix = value,
+            ConfigKey::Support => self.support_prefix = value,
+            ConfigKey::Versiontag => self.versiontag_prefix = value,
+            ConfigKey::Version => self.project_version = value,
         }
     }
 }

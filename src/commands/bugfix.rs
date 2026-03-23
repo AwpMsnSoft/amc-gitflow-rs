@@ -1,7 +1,10 @@
 use anyhow::{Result, anyhow, bail};
 use clap::{Args, Subcommand};
 
-use crate::core::{config::GitflowConfig, git};
+use crate::core::{
+    config::{ConfigKey, GitflowConfig},
+    git,
+};
 use crate::{error, info, item, success};
 
 #[derive(Args, Debug)]
@@ -60,7 +63,7 @@ pub fn run(args: BugfixArgs) -> Result<()> {
 
 fn list_bugfixes(config: &GitflowConfig, verbose: bool) -> Result<()> {
     let branches = git::branch::list()?;
-    let prefix = &config.bugfix_prefix;
+    let prefix = &config.get(ConfigKey::Bugfix);
     let current = git::branch::current()?;
 
     let bugfix_branches: Vec<_> = branches
@@ -87,8 +90,8 @@ fn list_bugfixes(config: &GitflowConfig, verbose: bool) -> Result<()> {
 }
 
 fn start_bugfix(config: &GitflowConfig, name: &str, base: Option<String>) -> Result<()> {
-    let branch_name = format!("{}{}", config.bugfix_prefix, name);
-    let base_branch = base.unwrap_or_else(|| config.develop_branch.clone());
+    let branch_name = format!("{}{}", config.get(ConfigKey::Bugfix), name);
+    let base_branch = base.unwrap_or_else(|| config.get(ConfigKey::Develop));
 
     if git::branch::exists(&branch_name)? {
         bail!("Bugfix branch '{}' already exists.", branch_name);
@@ -105,7 +108,7 @@ fn start_bugfix(config: &GitflowConfig, name: &str, base: Option<String>) -> Res
 }
 
 fn finish_bugfix(config: &GitflowConfig, name: Option<String>) -> Result<()> {
-    let prefix = &config.bugfix_prefix;
+    let prefix = &config.get(ConfigKey::Bugfix);
     let branch_name = if let Some(n) = name {
         format!("{}{}", prefix, n)
     } else {
@@ -126,12 +129,13 @@ fn finish_bugfix(config: &GitflowConfig, name: Option<String>) -> Result<()> {
     info!("Finishing bugfix '{}'...", branch_name);
 
     // 1. Checkout develop
-    git::checkout::branch(&config.develop_branch)?;
+    git::checkout::branch(&config.get(ConfigKey::Develop))?;
 
     // 2. Merge bugfix into develop
     info!(
         "Merging '{}' into '{}'...",
-        branch_name, config.develop_branch
+        branch_name,
+        config.get(ConfigKey::Develop)
     );
     git::merge::no_fast_forward(&branch_name)?;
 
@@ -144,7 +148,7 @@ fn finish_bugfix(config: &GitflowConfig, name: Option<String>) -> Result<()> {
 }
 
 fn publish_bugfix(config: &GitflowConfig, name: Option<String>) -> Result<()> {
-    let prefix = &config.bugfix_prefix;
+    let prefix = &config.get(ConfigKey::Bugfix);
     let current = git::branch::current()?;
     let branch_name = if let Some(n) = name {
         format!("{}{}", prefix, n)
@@ -166,7 +170,7 @@ fn publish_bugfix(config: &GitflowConfig, name: Option<String>) -> Result<()> {
 }
 
 fn track_bugfix(config: &GitflowConfig, name: &str) -> Result<()> {
-    let branch_name = format!("{}{}", config.bugfix_prefix, name);
+    let branch_name = format!("{}{}", config.get(ConfigKey::Bugfix), name);
 
     info!("Tracking bugfix branch '{}' from origin...", branch_name);
     git::remote::fetch("origin")?;

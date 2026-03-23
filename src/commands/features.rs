@@ -1,7 +1,10 @@
 use anyhow::{Result, anyhow, bail};
 use clap::{Args, Subcommand};
 
-use crate::core::{config::GitflowConfig, git};
+use crate::core::{
+    config::{ConfigKey, GitflowConfig},
+    git,
+};
 use crate::{error, info, item, success};
 
 #[derive(Args, Debug)]
@@ -59,12 +62,12 @@ pub fn run(args: FeatureArgs) -> Result<()> {
 
 fn list_features(config: &GitflowConfig, verbose: bool) -> Result<()> {
     let branches = git::branch::list()?;
-    let prefix = &config.feature_prefix;
+    let prefix = config.get(ConfigKey::Feature);
     let current = git::branch::current()?;
 
     let feature_branches: Vec<_> = branches
         .into_iter()
-        .filter(|b| b.starts_with(prefix))
+        .filter(|b| b.starts_with(&prefix))
         .collect();
 
     if feature_branches.is_empty() {
@@ -86,8 +89,8 @@ fn list_features(config: &GitflowConfig, verbose: bool) -> Result<()> {
 }
 
 fn start_feature(config: &GitflowConfig, name: &str, base: Option<String>) -> Result<()> {
-    let branch_name = format!("{}{}", config.feature_prefix, name);
-    let base_branch = base.unwrap_or_else(|| config.develop_branch.clone());
+    let branch_name = format!("{}{}", config.get(ConfigKey::Feature), name);
+    let base_branch = base.unwrap_or_else(|| config.get(ConfigKey::Develop));
 
     if git::branch::exists(&branch_name)? {
         bail!("Feature branch '{}' already exists.", branch_name);
@@ -104,12 +107,12 @@ fn start_feature(config: &GitflowConfig, name: &str, base: Option<String>) -> Re
 }
 
 fn finish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
-    let prefix = &config.feature_prefix;
+    let prefix = config.get(ConfigKey::Feature);
     let branch_name = if let Some(n) = name {
         format!("{}{}", prefix, n)
     } else {
         let current = git::branch::current()?;
-        if !current.starts_with(prefix) {
+        if !current.starts_with(&prefix) {
             bail!(
                 "Current branch '{}' is not a feature branch and no name was provided.",
                 current
@@ -125,12 +128,13 @@ fn finish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
     info!("Finishing feature '{}'...", branch_name);
 
     // 1. Checkout develop
-    git::checkout::branch(&config.develop_branch)?;
+    git::checkout::branch(&config.get(ConfigKey::Develop))?;
 
     // 2. Merge feature into develop
     info!(
         "Merging '{}' into '{}'...",
-        branch_name, config.develop_branch
+        branch_name,
+        config.get(ConfigKey::Develop)
     );
     git::merge::no_fast_forward(&branch_name)?;
 
@@ -143,12 +147,12 @@ fn finish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
 }
 
 fn publish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
-    let prefix = &config.feature_prefix;
+    let prefix = config.get(ConfigKey::Feature);
     let current = git::branch::current()?;
     let branch_name = if let Some(n) = name {
         format!("{}{}", prefix, n)
     } else {
-        if !current.starts_with(prefix) {
+        if !current.starts_with(&prefix) {
             bail!(
                 "Current branch '{}' is not a feature branch and no name was provided.",
                 current
@@ -165,7 +169,7 @@ fn publish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
 }
 
 fn track_feature(config: &GitflowConfig, name: &str) -> Result<()> {
-    let branch_name = format!("{}{}", config.feature_prefix, name);
+    let branch_name = format!("{}{}", config.get(ConfigKey::Feature), name);
 
     info!("Tracking feature branch '{}' from origin...", branch_name);
     git::remote::fetch("origin")?;

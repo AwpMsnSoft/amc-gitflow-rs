@@ -1,8 +1,10 @@
 use anyhow::{Result as AnyResult, anyhow};
 use clap::{Args, Subcommand};
+use colored::Colorize;
+use velvetio::confirm;
 
 use crate::core::config::{CONFIG_DESCRIPTIONS, ConfigKey, GitflowConfig};
-use crate::{error, info, item, success};
+use crate::{error, info, item, success, warn};
 
 #[derive(Args, Debug)]
 pub struct ConfigArgs {
@@ -40,24 +42,38 @@ pub fn run(args: ConfigArgs) -> AnyResult<()> {
             for key in ConfigKey::VARIANTS {
                 item!(
                     "{}:\t{}",
-                    CONFIG_DESCRIPTIONS.get(key.as_str()).unwrap(),
-                    config.get(key.as_str())
+                    CONFIG_DESCRIPTIONS.get(key).unwrap(),
+                    config.get(key.clone())
                 );
             }
         }
         ConfigSubcommand::Get { key } => {
             info!(
                 "{}:\t{}",
-                CONFIG_DESCRIPTIONS.get(key.as_str()).unwrap(),
-                config.get(key.as_str())
+                CONFIG_DESCRIPTIONS.get(&key).unwrap(),
+                config.get(key.clone())
             );
         }
         ConfigSubcommand::Set { key, value } => {
-            config.set(key.as_str(), value.clone());
+            if let ConfigKey::Version = key {
+                warn!(
+                    "Project version is typically managed through 'amc-gitflow-rs version' commands and should not be set manually in most cases. Setting it directly may lead to unexpected behavior."
+                );
+                if !confirm(
+                    &"Are you sure you want to set the version manually?"
+                        .bold()
+                        .to_string(),
+                ) {
+                    return Ok(());
+                }
+            }
+            let old_value = config.get(key.clone());
+            config.set(key.clone(), value.clone());
             config.save()?;
             success!(
-                "Updated {} to {}",
-                CONFIG_DESCRIPTIONS.get(key.as_str()).unwrap(),
+                "Updated {} from {} to {}",
+                CONFIG_DESCRIPTIONS.get(&key).unwrap(),
+                old_value,
                 value
             );
         }

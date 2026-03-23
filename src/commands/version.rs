@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use clap::{Args, Subcommand, ValueEnum};
 
-use crate::core::config::GitflowConfig;
+use crate::core::config::{ConfigKey, GitflowConfig};
 use crate::{error, info, success};
 
 #[derive(Args, Debug)]
@@ -45,12 +45,12 @@ pub fn run(args: VersionArgs) -> Result<()> {
 }
 
 pub fn show_version(config: &GitflowConfig) -> Result<()> {
-    info!("Current version: {}", config.project_version);
+    info!("Current version: {}", config.get(ConfigKey::Version));
     Ok(())
 }
 
 fn bump_version(config: &mut GitflowConfig, target: BumpType) -> Result<()> {
-    let current = config.project_version.clone();
+    let current = config.get(ConfigKey::Version);
     let next = match target {
         BumpType::Major => increment_semver(&current, 0)?,
         BumpType::Minor => increment_semver(&current, 1)?,
@@ -58,7 +58,7 @@ fn bump_version(config: &mut GitflowConfig, target: BumpType) -> Result<()> {
     };
 
     info!("Bumping version from {} to {}...", current, next);
-    config.project_version = next.clone();
+    config.set(ConfigKey::Version, next.clone());
     config.save()?;
     success!("Successfully bumped version to {}!", next);
     Ok(())
@@ -66,17 +66,23 @@ fn bump_version(config: &mut GitflowConfig, target: BumpType) -> Result<()> {
 
 pub fn get_current_version() -> Result<String> {
     let config = GitflowConfig::load()?;
-    Ok(config.project_version)
+    Ok(config.get(ConfigKey::Version))
 }
 
 fn increment_semver(version: &str, index: usize) -> Result<String> {
     let mut parts: Vec<u32> = version
         .split('.')
-        .map(|s| s.parse().map_err(|_| anyhow!("Invalid semver: {}", version)))
+        .map(|s| {
+            s.parse()
+                .map_err(|_| anyhow!("Invalid semver: {}", version))
+        })
         .collect::<Result<Vec<u32>>>()?;
 
     if parts.len() != 3 {
-        return Err(anyhow!("Only x.y.z semver format is supported for automatic bumping. Current: {}", version));
+        return Err(anyhow!(
+            "Only x.y.z semver format is supported for automatic bumping. Current: {}",
+            version
+        ));
     }
 
     parts[index] += 1;
