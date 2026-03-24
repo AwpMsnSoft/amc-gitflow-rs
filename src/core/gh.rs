@@ -14,7 +14,10 @@ pub mod auth {
 
     /// Check if gh is authenticated
     pub fn is_authenticated() -> bool {
-        run("gh", &["auth", "status"]).is_ok()
+        match run("gh", &["auth", "status"]) {
+            Ok(output) => output.contains("Logged in to github.com"),
+            Err(_) => false,
+        }
     }
 
     /// Prompt user to login with gh
