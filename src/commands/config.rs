@@ -1,10 +1,9 @@
 use anyhow::{Result as AnyResult, anyhow};
 use clap::{Args, Subcommand};
-use colored::Colorize;
 use velvetio::confirm;
 
 use crate::core::config::{CONFIG_DESCRIPTIONS, ConfigKey, GitflowConfig};
-use crate::{error, info, item, success, warn};
+use crate::{bold, error, info, item, success, warn};
 
 #[derive(Args, Debug)]
 pub struct ConfigArgs {
@@ -59,11 +58,7 @@ pub fn run(args: ConfigArgs) -> AnyResult<()> {
                 warn!(
                     "Project version is typically managed through 'amc-gitflow-rs version' commands and should not be set manually in most cases. Setting it directly may lead to unexpected behavior."
                 );
-                if !confirm(
-                    &"Are you sure you want to set the version manually?"
-                        .bold()
-                        .to_string(),
-                ) {
+                if !confirm(&bold!("Are you sure you want to set the version manually?")) {
                     return Ok(());
                 }
             }

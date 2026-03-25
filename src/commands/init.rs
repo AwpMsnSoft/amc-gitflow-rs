@@ -1,11 +1,12 @@
-use anyhow::{Result, bail};
+use anyhow::{Result as AnyResult, bail};
 use clap::Args;
+use velvetio::{ask, confirm};
 
 use crate::core::{
     config::{ConfigKey, GitflowConfig},
     gh, git,
 };
-use crate::{error, info, success, warn};
+use crate::{bold, error, info, success, warn};
 
 #[derive(Args, Debug)]
 pub struct InitArgs {
@@ -16,10 +17,18 @@ pub struct InitArgs {
     /// Use default branch naming conventions
     #[arg(short, long)]
     pub defaults: bool,
+
+    /// Do not synchronize with a remote repository (default)
+    #[arg(short, long, group = "remote_sync")]
+    pub local: bool,
+
+    /// Synchronize with a remote repository
+    #[arg(short, long, group = "remote_sync")]
+    pub remote: bool,
 }
 
 /// Initialize amc-gitflow-rs in the current repository. This will set up the necessary git branches and configuration for using amc-gitflow. If the repository is not already a git repository, it will be initialized as one. If amc-gitflow is already initialized, this command will do nothing unless the --force flag is used to reinitialize it.
-pub fn run(args: InitArgs) -> Result<()> {
+pub fn run(args: InitArgs) -> AnyResult<()> {
     info!("Initializing amc-gitflow...");
 
     // 1. Check tools
@@ -39,13 +48,39 @@ pub fn run(args: InitArgs) -> Result<()> {
     }
 
     // 2. Initializing git if needed
-    let is_git_repo = git::status::is_clean().is_ok() || git::branch::current().is_ok();
-    if !is_git_repo {
-        info!("Initializing new git repository...");
+    if !git::repo::is_repository() {
+        info!("Repository not found. Initializing new git repository...");
         git::repo::init()?;
     }
 
-    // 3. Gitflow initialization check
+    // 3. Initializing remote repository if needed
+    if args.remote {
+        if !git::remote::has_remotes()? {
+            info!("No remotes found. Creating a new GitHub repository...");
+            let is_org = confirm(&bold!("Is this repository for an organization?"));
+            let owner = if is_org {
+                ask::<String>(&bold!("Organization name:"))
+            } else {
+                gh::auth::username()?
+            };
+            let repo_name = git::repo::name()?;
+            let is_public = confirm(&bold!("Make the repository public?"));
+
+            match gh::repo::create(&repo_name, is_public, &owner) {
+                Ok(_) => success!("Successfully created the remote repository."),
+                Err(e) => {
+                    error!(
+                        "Failed to create remote repository. It might already exist or you might not have permissions."
+                    );
+                    bail!("Failed to create remote repository: {}", e);
+                }
+            }
+        } else {
+            info!("Remote already configured.");
+        }
+    }
+
+    // 4. Gitflow initialization check
     let is_initialized = GitflowConfig::load().is_ok();
 
     if is_initialized && !args.force {
@@ -54,21 +89,20 @@ pub fn run(args: InitArgs) -> Result<()> {
         return Ok(());
     }
 
-    // 4. Determine configuration
+    // 5. Get amc-gitflow configuration
     let config = if args.defaults {
         GitflowConfig::default()
     } else {
+        info!("No existing configuration found. Setting up amc-gitflow configuration...");
         GitflowConfig::new()
     };
-
-    // 5. Apply configuration
     config.save()?;
 
     // 6. Ensure branches exist
     if !git::branch::exists(&config.get(ConfigKey::Product))? {
         // Fresh repo check: if current branch fails, we need an initial commit
         if git::branch::current().is_err() {
-            info!("Creating initial commit...");
+            info!("The repository appears to be new and has no commits. Creating an initial commit...");
             git::commit::init()?;
         }
     }
@@ -79,6 +113,15 @@ pub fn run(args: InitArgs) -> Result<()> {
             &config.get(ConfigKey::Develop),
             &config.get(ConfigKey::Product),
         )?;
+    }
+
+    // 7. Push local branches to remote if needed
+    if args.remote {
+        for remote in git::remote::list()? {
+            info!("Pushing branches to remote '{}'...", remote);
+            git::remote::push(&remote, &config.get(ConfigKey::Product))?;
+            git::remote::push(&remote, &config.get(ConfigKey::Develop))?;
+        }
     }
 
     success!("Successfully initialized amc-gitflow!");

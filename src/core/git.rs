@@ -16,6 +16,20 @@ pub mod repo {
     pub fn init() -> AnyResult<String> {
         run("git", &["init"])
     }
+
+    /// Get the name of the current git repository
+    pub fn name() -> AnyResult<String> {
+        let top_level = run("git", &["rev-parse", "--show-toplevel"])?;
+        run("basename", &[&top_level])
+    }
+
+    /// Check if the current directory is a git repository
+    pub fn is_repository() -> bool  {
+        match run("git", &["status"]) {
+            Ok(_) => true,
+            Err(err) => !err.to_string().contains("fatal: not a git repository"),
+        }
+    }
 }
 
 pub mod commit {
@@ -23,7 +37,15 @@ pub mod commit {
 
     /// Create an initial empty commit
     pub fn init() -> AnyResult<String> {
-        run("git", &["commit", "--allow-empty", "-m", "init(all): Workspace with initial commit"])
+        run(
+            "git",
+            &[
+                "commit",
+                "--allow-empty",
+                "-m",
+                "init(all): Workspace with initial commit",
+            ],
+        )
     }
 }
 
@@ -103,6 +125,18 @@ pub mod config {
 
 pub mod remote {
     use super::*;
+
+    /// Check if there are any remotes
+    pub fn has_remotes() -> AnyResult<bool> {
+        let output = run("git", &["remote"])?;
+        Ok(!output.trim().is_empty())
+    }
+
+    /// Get list of remotes
+    pub fn list() -> AnyResult<Vec<String>> {
+        let output = run("git", &["remote"])?;
+        Ok(output.lines().map(|s| s.to_string()).collect())
+    }
 
     /// Push a branch to remote
     pub fn push(remote: &str, branch: &str) -> AnyResult<String> {

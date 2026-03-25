@@ -1,6 +1,7 @@
 #![allow(unused)]
 
-use anyhow::Result as AnyResult;
+use anyhow::{Result as AnyResult, bail};
+use regex::Regex;
 
 use crate::utils::run::run;
 
@@ -23,6 +24,23 @@ pub mod auth {
     /// Prompt user to login with gh
     pub fn login() -> AnyResult<String> {
         run("gh", &["auth", "login"])
+    }
+
+    /// Username of the authenticated user
+    pub fn username() -> AnyResult<String> {
+        let output = run("gh", &["auth", "status"])?;
+
+        // use regex to parse: ...... Logged in to github.com account <$USER> ......
+        let re = Regex::new(r"Logged in to github.com account (\S+)").unwrap();
+        if let Some(caps) = re.captures(&output) {
+            if let Some(user) = caps.get(1) {
+                return Ok(user.as_str().to_string());
+            }
+        }
+
+        bail!(
+            "Could not determine authenticated username from gh auth status output. Is gh authenticated?"
+        );
     }
 }
 
@@ -66,6 +84,23 @@ pub mod repo {
     /// Repository information
     pub fn view() -> AnyResult<String> {
         run("gh", &["repo", "view"])
+    }
+
+    /// Set default repository for current directory
+    pub fn set_default(repo: &str) -> AnyResult<String> {
+        run("gh", &["repo", "set-default", repo])
+    }
+
+    /// Create remote repository
+    pub fn create(name: &str, is_public: bool, owner: &str) -> AnyResult<String> {
+        let mut args = vec!["repo", "create"];
+        let target = format!("{}/{}", owner, name);
+        args.push(&target);
+
+        args.push(if is_public { "--public" } else { "--private" });
+        args.append(&mut vec!["--source=.", "--remote=origin"]);
+
+        run("gh", &args)
     }
 }
 

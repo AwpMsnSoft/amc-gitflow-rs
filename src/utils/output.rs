@@ -26,6 +26,20 @@ pub(crate) fn colored_display<S: Display>(msg: S, level: Level) {
     }
 }
 
+pub(crate) fn bold_string<S: Display>(msg: S) -> String {
+    msg.to_string().bold().to_string()
+}
+
+#[macro_export]
+macro_rules! bold {
+    ($arg:expr) => {
+        $crate::utils::output::bold_string($arg)
+    };
+    ($($arg:tt)*) => {
+        $crate::utils::output::bold_string(format!($($arg)*))
+    };
+}
+
 #[macro_export]
 macro_rules! info {
     ($($arg:tt)*) => {

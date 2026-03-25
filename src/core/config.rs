@@ -1,11 +1,10 @@
 use anyhow::Result as AnyResult;
 use clap::ValueEnum;
-use colored::Colorize;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use velvetio::prelude::*;
 
-use crate::core::git;
+use crate::{bold, core::git};
 
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ConfigKey {
@@ -79,10 +78,6 @@ impl GitflowConfig {
 
     /// Create a new GitflowConfig with console inputs
     pub fn new() -> Self {
-        macro_rules! bold {
-            ($args: expr) => {{ $args.bold().to_string() }};
-        }
-
         let product_branch = ask!(
             &bold!(CONFIG_DESCRIPTIONS.get(&ConfigKey::Product).unwrap_or(&"product branch")),
             default: "master".to_string()
