@@ -176,4 +176,15 @@ impl GitflowConfig {
             ConfigKey::Version => self.project_version = value,
         }
     }
+
+    /// Get a private configuration value by key. This is for any additional configuration values that may be needed by commands but are not part of the core gitflow configuration.
+    pub fn get_private(key: &str) -> AnyResult<String> {
+        git::config::get(&format!("amc-gitflow-rs.private.{}", key))
+    }
+
+    /// Set a private configuration value by key. This is for any additional configuration values that may be needed by commands but are not part of the core gitflow configuration.
+    pub fn set_private(key: &str, value: String) -> AnyResult<()> {
+        git::config::set(&format!("amc-gitflow-rs.private.{}", key), &value)?;
+        Ok(())
+    }
 }
