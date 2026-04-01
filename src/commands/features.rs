@@ -3,8 +3,9 @@ use clap::{Args, Subcommand};
 
 use crate::core::{
     config::{ConfigKey, GitflowConfig},
-    git,
+    gh, git,
 };
+use crate::utils::error::IntoAnyResult;
 use crate::{error, info, item, success};
 
 #[derive(Args, Debug)]
@@ -42,6 +43,9 @@ pub enum FeatureSubcommand {
     Track {
         /// The name of the feature
         name: String,
+        /// The remote name (defaults to origin)
+        #[arg(default_value = "origin")]
+        remote: String,
     },
 }
 
@@ -56,7 +60,7 @@ pub fn run(args: FeatureArgs) -> Result<()> {
         FeatureSubcommand::Start { name, base } => start_feature(&config, &name, base),
         FeatureSubcommand::Finish { name } => finish_feature(&config, name),
         FeatureSubcommand::Publish { name } => publish_feature(&config, name),
-        FeatureSubcommand::Track { name } => track_feature(&config, &name),
+        FeatureSubcommand::Track { name, remote } => track_feature(&config, &name, &remote),
     }
 }
 
@@ -121,28 +125,60 @@ fn finish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
         current
     };
 
-    if !git::branch::exists(&branch_name)? {
-        bail!("Feature branch '{}' does not exist.", branch_name);
+    // Look up the stored PR URL/number for this branch
+    let private_key = format!(
+        "feature-pr.{}",
+        branch_name.replace('/', ".").replace('_', "-")
+    );
+    let pr_number = GitflowConfig::get_private(&private_key).map_err(|_| {
+        anyhow!(
+            "No PR found for feature branch '{}'. Did you run 'publish' first?",
+            branch_name
+        )
+    })?;
+
+    // Check whether the PR has been merged on the remote
+    info!("Checking PR #{} merge status...", pr_number);
+    if !gh::pr::is_merged(&pr_number)? {
+        bail!(
+            "PR #{} has not been merged yet. Finish is only allowed after the remote PR is merged.",
+            pr_number,
+        );
     }
 
-    info!("Finishing feature '{}'...", branch_name);
+    let base_branch = config.get(ConfigKey::Develop);
 
-    // 1. Checkout develop
-    git::checkout::branch(&config.get(ConfigKey::Develop))?;
+    // Checkout develop and pull the merged changes
+    info!("Syncing '{}' with remote...", base_branch);
+    git::checkout::branch(&base_branch)?;
+    for remote in git::remote::list()? {
+        git::remote::pull(&remote, &base_branch)?;
+    }
 
-    // 2. Merge feature into develop
-    info!(
-        "Merging '{}' into '{}'...",
-        branch_name,
-        config.get(ConfigKey::Develop)
+    // Delete the local feature branch
+    if git::branch::exists(&branch_name)? {
+        info!("Deleting local feature branch '{}'...", branch_name);
+        git::branch::delete(&branch_name, false)?;
+    }
+
+    // Delete the remote feature branch
+    for remote in git::remote::list()? {
+        if git::remote::branch_exists(&remote, &branch_name)? {
+            info!(
+                "Deleting remote feature branch '{}' on '{}'...",
+                branch_name, remote
+            );
+            git::branch::delete_remote(&remote, &branch_name)?;
+        }
+    }
+
+    // Clean up the stored private config key
+    GitflowConfig::unset_private(&private_key)?;
+
+    success!(
+        "Feature '{}' finished and cleaned up successfully!",
+        branch_name
     );
-    git::merge::no_fast_forward(&branch_name)?;
-
-    // 3. Delete feature branch
-    info!("Deleting feature branch '{}'...", branch_name);
-    git::branch::delete(&branch_name, false)?;
-
-    success!("Successfully finished feature!");
     Ok(())
 }
 
@@ -161,19 +197,106 @@ fn publish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
         current
     };
 
-    info!("Publishing feature branch '{}' to origin...", branch_name);
-    git::remote::push("origin", &branch_name)?;
+    if !git::branch::exists(&branch_name)? {
+        bail!("Feature branch '{}' does not exist.", branch_name);
+    }
 
-    success!("Successfully published feature branch!");
+    let base_branch = config.get(ConfigKey::Develop);
+    let short_name = &branch_name[prefix.len()..];
+
+    // Check if the branch is already published (has an upstream or already has a open related PR)
+    if git::remote::list()?
+        .iter()
+        .any(|remote| git::remote::branch_exists(&remote, &branch_name).unwrap_or(false))
+    {
+        bail!(
+            "Feature branch '{}' is already published to remote.",
+            branch_name
+        );
+    }
+    if gh::pr::list("open")?
+        .iter()
+        .any(|pr| pr.branch == branch_name)
+    {
+        bail!(
+            "A pull request for feature branch '{}' already exists.",
+            branch_name
+        );
+    }
+
+    // Push feature branch to remote
+    for remote in git::remote::list()? {
+        info!(
+            "Publishing feature branch '{}' to {}...",
+            branch_name, remote
+        );
+        git::remote::push_upstream(&remote, &branch_name)?;
+    }
+
+    // Create a PR targeting the develop branch
+    let pr_title = format!("feat: {}", short_name);
+    info!(
+        "Creating pull request from '{}' into '{}'...",
+        branch_name, base_branch
+    );
+    let pr_body = r"
+### What & Why
+- Summary:
+
+### Checklist
+- [ ] Single-purpose
+- [ ] Lint/format OK
+- [ ] Type hints added
+- [ ] Tests updated/passing
+- [ ] Docs updated (if needed)
+- [ ] Fixes # (optional)
+
+### Notes
+- Impact / alternatives / rollout:
+
+### Links
+- Issues: Fixes #123 (optional)
+- References: <urls>
+
+### Breaking Changes (if any)
+- Description & migration notes:
+";
+    gh::pr::create(&pr_title, &pr_body, &base_branch, &branch_name)?;
+
+    // Persist the PR number keyed by branch name so `finish` can look it up
+    let private_key = format!(
+        "feature-pr.{}",
+        branch_name.replace('/', ".").replace('_', "-")
+    );
+    let pr_number = gh::pr::list("open")?
+        .iter()
+        .filter_map(|pr| {
+            if pr.branch == branch_name {
+                Some(pr.number.clone())
+            } else {
+                None
+            }
+        })
+        .next()
+        .into_anyresult()?;
+    GitflowConfig::set_private(&private_key, pr_number.clone())?;
+
+    success!(
+        "Successfully published feature branch and created PR: #{}",
+        pr_number
+    );
     Ok(())
 }
 
-fn track_feature(config: &GitflowConfig, name: &str) -> Result<()> {
+fn track_feature(config: &GitflowConfig, name: &str, remote: &str) -> Result<()> {
     let branch_name = format!("{}{}", config.get(ConfigKey::Feature), name);
 
-    info!("Tracking feature branch '{}' from origin...", branch_name);
-    git::remote::fetch("origin")?;
-    git::branch::create(&branch_name, &format!("origin/{}", branch_name))?;
+    info!(
+        "Tracking feature branch '{}' from {}...",
+        branch_name, remote
+    );
+    git::remote::fetch(remote)?;
+    git::branch::create(&branch_name, &format!("{}/{}", remote, branch_name))?;
 
     success!("Successfully tracking feature branch!");
     Ok(())

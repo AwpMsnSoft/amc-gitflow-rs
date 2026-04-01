@@ -187,4 +187,10 @@ impl GitflowConfig {
         git::config::set(&format!("amc-gitflow-rs.private.{}", key), &value)?;
         Ok(())
     }
+
+    /// Unset a private configuration value by key. This is for any additional configuration values that may be needed by commands but are not part of the core gitflow configuration.
+    pub fn unset_private(key: &str) -> AnyResult<()> {
+        git::config::unset(&format!("amc-gitflow-rs.private.{}", key))?;
+        Ok(())
+    }
 }

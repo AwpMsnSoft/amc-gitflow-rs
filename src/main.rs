@@ -30,6 +30,7 @@ enum Commands {
 }
 
 fn main() -> AnyResult<()> {
+    debug!("Debug mode enabled.");
     let cli = Cli::parse();
 
     match cli.command {

@@ -24,7 +24,7 @@ pub mod repo {
     }
 
     /// Check if the current directory is a git repository
-    pub fn is_repository() -> bool  {
+    pub fn is_repository() -> bool {
         match run("git", &["status"]) {
             Ok(_) => true,
             Err(err) => !err.to_string().contains("fatal: not a git repository"),
@@ -74,6 +74,11 @@ pub mod branch {
         run("git", &["branch", flag, name])
     }
 
+    /// Delete a branch on a remote
+    pub fn delete_remote(remote: &str, name: &str) -> AnyResult<String> {
+        run("git", &["push", remote, "--delete", name])
+    }
+
     /// List local branches
     pub fn list() -> AnyResult<Vec<String>> {
         let output = run("git", &["branch", "--format=%(refname:short)"])?;
@@ -120,6 +125,11 @@ pub mod config {
     /// Set git config value
     pub fn set(key: &str, value: &str) -> AnyResult<String> {
         run("git", &["config", "set", key, value])
+    }
+
+    /// Unset git config value
+    pub fn unset(key: &str) -> AnyResult<String> {
+        run("git", &["config", "--unset", key])
     }
 }
 

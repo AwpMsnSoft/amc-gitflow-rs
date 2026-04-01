@@ -2,8 +2,9 @@
 
 use anyhow::{Result as AnyResult, bail};
 use regex::Regex;
+use try_map::FlipResultExt;
 
-use crate::utils::run::run;
+use crate::utils::run::{edit_in_editor, run};
 
 /// Check if gh command is installed
 pub fn is_installed() -> bool {
@@ -47,19 +48,45 @@ pub mod auth {
 pub mod pr {
     use super::*;
 
-    /// Create a pull request
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub struct Status {
+        pub number: String,
+        pub title: String,
+        pub branch: String,
+        pub state: String,
+    }
+
+    /// Create a pull request.
+    /// If `body` is None, opens $EDITOR for interactive body input.
     pub fn create(title: &str, body: &str, base: &str, head: &str) -> AnyResult<String> {
+        let body = edit_in_editor(body)?;
         run(
             "gh",
             &[
-                "pr", "create", "--title", title, "--body", body, "--base", base, "--head", head,
+                "pr", "create", "--title", title, "--body", &body, "--base", base, "--head", head,
             ],
         )
     }
 
-    /// List pull requests
-    pub fn list(state: &str) -> AnyResult<String> {
-        run("gh", &["pr", "list", "--state", state])
+    /// List pull requests with given state (open, closed, merged, all)
+    pub fn list(state: &str) -> AnyResult<Vec<Status>> {
+        run("gh", &["pr", "list", "--state", state])?
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(|line| {
+                let parts = line.split('\t').collect::<Vec<_>>();
+                if parts.len() < 4 {
+                    bail!("Unexpected line format from `gh pr list`: '{}'", line);
+                }
+                Ok(Status {
+                    number: parts[0].to_string(),
+                    title: parts[1].to_string(),
+                    branch: parts[2].to_string(),
+                    state: parts[3].to_string(),
+                })
+            })
+            .collect::<Vec<_>>()
+            .flip()
     }
 
     /// View pull request details
@@ -67,14 +94,22 @@ pub mod pr {
         run("gh", &["pr", "view", number])
     }
 
-    /// Merge a pull request
-    pub fn merge(number: &str, method: &str) -> AnyResult<String> {
-        run("gh", &["pr", "merge", number, "--", method])
+    /// Check if a pull request (by number) has been merged.
+    /// Returns Ok(true) if merged, Ok(false) if not yet merged.
+    pub fn is_merged(number: &str) -> AnyResult<bool> {
+        let output = run(
+            "gh",
+            &["pr", "view", number, "--json", "state", "--jq", ".state"],
+        )?;
+        Ok(output.trim().eq_ignore_ascii_case("merged"))
     }
 
-    /// Check pull request status
-    pub fn status() -> AnyResult<String> {
-        run("gh", &["pr", "status"])
+    /// Get the URL of a pull request by number
+    pub fn url(number: &str) -> AnyResult<String> {
+        run(
+            "gh",
+            &["pr", "view", number, "--json", "url", "--jq", ".url"],
+        )
     }
 }
 
