@@ -260,7 +260,7 @@ fn publish_bugfix(config: &GitflowConfig, name: Option<String>) -> Result<()> {
 - Issues: Fixes #123 (optional)
 - References: <urls>
 ";
-    gh::pr::create(&pr_title, &pr_body, &base_branch, &branch_name)?;
+    gh::pr::create(&pr_title, &pr_body, &base_branch, &branch_name, Some(&["bug"]))?;
 
     // Persist the PR number keyed by branch name so `finish` can look it up
     let private_key = format!(

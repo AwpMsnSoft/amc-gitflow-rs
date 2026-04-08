@@ -58,14 +58,26 @@ pub mod pr {
 
     /// Create a pull request.
     /// If `body` is None, opens $EDITOR for interactive body input.
-    pub fn create(title: &str, body: &str, base: &str, head: &str) -> AnyResult<String> {
+    pub fn create(
+        title: &str,
+        body: &str,
+        base: &str,
+        head: &str,
+        labels: Option<&[&str]>,
+    ) -> AnyResult<String> {
         let body = edit_in_editor(body)?;
-        run(
-            "gh",
-            &[
-                "pr", "create", "--title", title, "--body", &body, "--base", base, "--head", head,
-            ],
-        )
+        let mut args = vec![
+            "pr", "create", "--title", title, "--body", &body, "--base", base, "--head", head,
+        ];
+
+        if let Some(labels) = labels {
+            for label in labels {
+                args.push("--label");
+                args.push(label);
+            }
+        }
+
+        run("gh", &args)
     }
 
     /// List pull requests with given state (open, closed, merged, all)
