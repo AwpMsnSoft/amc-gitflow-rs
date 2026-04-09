@@ -2,7 +2,7 @@ use anyhow::{Result, anyhow, bail};
 use clap::{Args, Subcommand};
 
 use crate::core::{
-    config::{ConfigKey, GitflowConfig},
+    config::{ConfigKey, GitflowConfig, private::{*, ConfigKey as PrivateConfigKey}},
     gh, git,
 };
 use crate::utils::error::IntoAnyResult;
@@ -126,11 +126,10 @@ fn finish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
     };
 
     // Look up the stored PR URL/number for this branch
-    let private_key = format!(
-        "feature-pr.{}",
-        branch_name.replace('/', ".").replace('_', "-")
-    );
-    let pr_number = GitflowConfig::get_private(&private_key).map_err(|_| {
+    let pr_number = get_private(PrivateConfigKey::Feature(SubConfigKey::Pr(
+        branch_name.clone(),
+    )))
+    .map_err(|_| {
         anyhow!(
             "No PR found for feature branch '{}'. Did you run 'publish' first?",
             branch_name
@@ -173,7 +172,9 @@ fn finish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
     }
 
     // Clean up the stored private config key
-    GitflowConfig::unset_private(&private_key)?;
+    unset_private(PrivateConfigKey::Feature(SubConfigKey::Pr(
+        branch_name.clone(),
+    )))?;
 
     success!(
         "Feature '{}' finished and cleaned up successfully!",
@@ -270,10 +271,6 @@ fn publish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
     )?;
 
     // Persist the PR number keyed by branch name so `finish` can look it up
-    let private_key = format!(
-        "feature-pr.{}",
-        branch_name.replace('/', ".").replace('_', "-")
-    );
     let pr_number = gh::pr::list("open")?
         .iter()
         .filter_map(|pr| {
@@ -285,7 +282,10 @@ fn publish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
         })
         .next()
         .into_anyresult()?;
-    GitflowConfig::set_private(&private_key, pr_number.clone())?;
+    set_private(
+        PrivateConfigKey::Feature(SubConfigKey::Pr(branch_name.clone())),
+        pr_number.clone(),
+    )?;
 
     success!(
         "Successfully published feature branch and created PR: #{}",
