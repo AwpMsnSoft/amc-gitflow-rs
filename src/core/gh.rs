@@ -172,13 +172,14 @@ pub mod repo {
     }
 
     /// Create remote repository
-    pub fn create(name: &str, is_public: bool, owner: &str) -> AnyResult<String> {
+    pub fn create(name: &str, remote: &str, is_public: bool, owner: &str) -> AnyResult<String> {
         let mut args = vec!["repo", "create"];
         let target = format!("{owner}/{name}");
         args.push(&target);
 
+        let remote_arg = format!("--remote={remote}");
         args.push(if is_public { "--public" } else { "--private" });
-        args.append(&mut vec!["--source=.", "--remote=origin"]);
+        args.append(&mut vec!["--source=.", &remote_arg]);
 
         run("gh", &args)
     }

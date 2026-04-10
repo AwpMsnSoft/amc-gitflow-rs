@@ -18,13 +18,9 @@ pub struct InitArgs {
     #[arg(short, long)]
     pub defaults: bool,
 
-    /// Do not synchronize with a remote repository (default)
-    #[arg(short, long, group = "remote_sync")]
-    pub local: bool,
-
-    /// Synchronize with a remote repository
-    #[arg(short, long, group = "remote_sync")]
-    pub remote: bool,
+    /// Synchronize with a remote repository if specified (default: not synchronized)
+    #[arg(short, long, default_value = None)]
+    pub remote: Option<String>,
 }
 
 /// Initialize amc-gitflow-rs in the current repository. This will set up the necessary git branches and configuration for using amc-gitflow. If the repository is not already a git repository, it will be initialized as one. If amc-gitflow is already initialized, this command will do nothing unless the --force flag is used to reinitialize it.
@@ -54,7 +50,7 @@ pub fn run(args: InitArgs) -> AnyResult<()> {
     }
 
     // 3. Initializing remote repository if needed
-    if args.remote {
+    if let Some(remote) = &args.remote {
         if !git::remote::has_remotes()? {
             info!("No remotes found. Creating a new GitHub repository...");
             let is_org = confirm(&bold!("Is this repository for an organization?"));
@@ -66,7 +62,7 @@ pub fn run(args: InitArgs) -> AnyResult<()> {
             let repo_name = git::repo::name()?;
             let is_public = confirm(&bold!("Make the repository public?"));
 
-            match gh::repo::create(&repo_name, is_public, &owner) {
+            match gh::repo::create(&repo_name, &remote, is_public, &owner) {
                 Ok(_) => success!("Successfully created the remote repository."),
                 Err(e) => {
                     error!(
@@ -102,7 +98,9 @@ pub fn run(args: InitArgs) -> AnyResult<()> {
     if !git::branch::exists(&config.get(ConfigKey::Product))? {
         // Fresh repo check: if current branch fails, we need an initial commit
         if git::branch::current().is_err() {
-            info!("The repository appears to be new and has no commits. Creating an initial commit...");
+            info!(
+                "The repository appears to be new and has no commits. Creating an initial commit..."
+            );
             git::commit::init()?;
         }
     }
@@ -110,14 +108,11 @@ pub fn run(args: InitArgs) -> AnyResult<()> {
     if !git::branch::exists(&config.get(ConfigKey::Develop))? {
         let develop_branch = config.get(ConfigKey::Develop);
         info!("Creating {develop_branch} branch...");
-        git::branch::create(
-            &develop_branch,
-            &config.get(ConfigKey::Product),
-        )?;
+        git::branch::create(&develop_branch, &config.get(ConfigKey::Product))?;
     }
 
     // 7. Push local branches to remote if needed
-    if args.remote {
+    if args.remote.is_some() {
         for remote in git::remote::list()? {
             info!("Pushing branches to remote '{remote}'...");
             git::remote::push(&remote, &config.get(ConfigKey::Product))?;
