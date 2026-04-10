@@ -82,9 +82,9 @@ fn list_releases(config: &GitflowConfig, verbose: bool) -> Result<()> {
         let short_name = &branch[prefix.len()..];
         let mark = if branch == current { "*" } else { " " };
         if verbose {
-            item!("{} {} (full: {})", mark, short_name, branch);
+            item!("{mark} {short_name} (full: {branch})");
         } else {
-            item!("{} {}", mark, short_name);
+            item!("{mark} {short_name}");
         }
     }
 
@@ -92,28 +92,27 @@ fn list_releases(config: &GitflowConfig, verbose: bool) -> Result<()> {
 }
 
 fn start_release(config: &GitflowConfig, name: &str, base: Option<String>) -> Result<()> {
-    let branch_name = format!("{}{}", config.get(ConfigKey::Release), name);
+    let branch_name = format!("{prefix}{name}", prefix = config.get(ConfigKey::Release));
     let base_branch = base.unwrap_or_else(|| config.get(ConfigKey::Develop));
     let active_releases = existing_release_branches(config)?;
 
     if git::branch::exists(&branch_name)? {
-        bail!("Release branch '{}' already exists.", branch_name);
+        bail!("Release branch '{branch_name}' already exists.");
     }
 
     if !active_releases.is_empty() {
+        let first_active = &active_releases[0];
         bail!(
-            "Another release branch already exists: '{}'. Finish or delete it before starting a new release.",
-            active_releases[0]
+            "Another release branch already exists: '{first_active}'. Finish or delete it before starting a new release."
         );
     }
 
     info!(
-        "Creating new release branch '{}' based on '{}'...",
-        branch_name, base_branch
+        "Creating new release branch '{branch_name}' based on '{base_branch}'..."
     );
     git::branch::create(&branch_name, &base_branch)?;
 
-    success!("Successfully started release '{}'!", name);
+    success!("Successfully started release '{name}'!");
     Ok(())
 }
 
@@ -124,7 +123,7 @@ fn finish_release(config: &GitflowConfig, name: Option<String>) -> Result<()> {
         .unwrap_or(&branch_name);
 
     if !git::branch::exists(&branch_name)? {
-        bail!("Release branch '{}' does not exist.", branch_name);
+        bail!("Release branch '{branch_name}' does not exist.");
     }
 
     let current_project_version = get_current_version()?;
@@ -143,8 +142,7 @@ fn finish_release(config: &GitflowConfig, name: Option<String>) -> Result<()> {
         }
         if git::tag::exists(&input)? {
             error!(
-                "Tag '{}' already exists. Please enter a different tag name.",
-                input
+                "Tag '{input}' already exists. Please enter a different tag name."
             );
             continue;
         }
@@ -152,31 +150,29 @@ fn finish_release(config: &GitflowConfig, name: Option<String>) -> Result<()> {
         break;
     }
 
-    info!("Finishing release '{}'...", branch_name);
+    info!("Finishing release '{branch_name}'...");
 
-    git::checkout::branch(&config.get(ConfigKey::Product))?;
+    let product_branch = config.get(ConfigKey::Product);
+    git::checkout::branch(&product_branch)?;
     info!(
-        "Merging '{}' into '{}'...",
-        branch_name,
-        config.get(ConfigKey::Product)
+        "Merging '{branch_name}' into '{product_branch}'..."
     );
     git::merge::no_fast_forward(&branch_name)?;
 
-    info!("Creating release tag '{}'...", tag_name);
-    git::tag::create(&tag_name, &format!("Release {}", release_name))?;
+    info!("Creating release tag '{tag_name}'...");
+    git::tag::create(&tag_name, &format!("Release {release_name}"))?;
 
-    git::checkout::branch(&config.get(ConfigKey::Develop))?;
+    let develop_branch = config.get(ConfigKey::Develop);
+    git::checkout::branch(&develop_branch)?;
     info!(
-        "Back-merging '{}' into '{}'...",
-        branch_name,
-        config.get(ConfigKey::Develop)
+        "Back-merging '{branch_name}' into '{develop_branch}'..."
     );
     git::merge::no_fast_forward(&branch_name)?;
 
-    info!("Deleting release branch '{}'...", branch_name);
+    info!("Deleting release branch '{branch_name}'...");
     git::branch::delete(&branch_name, false)?;
 
-    success!("Successfully finished release '{}'!", release_name);
+    success!("Successfully finished release '{release_name}'!");
     Ok(())
 }
 
@@ -184,17 +180,16 @@ fn publish_release(config: &GitflowConfig, name: Option<String>) -> Result<()> {
     let branch_name = resolve_release_branch_name(config, name)?;
 
     if !git::branch::exists(&branch_name)? {
-        bail!("Release branch '{}' does not exist.", branch_name);
+        bail!("Release branch '{branch_name}' does not exist.");
     }
 
     if git::remote::branch_exists("origin", &branch_name)? {
         bail!(
-            "Remote release branch 'origin/{}' already exists.",
-            branch_name
+            "Remote release branch 'origin/{branch_name}' already exists."
         );
     }
 
-    info!("Publishing release branch '{}' to origin...", branch_name);
+    info!("Publishing release branch '{branch_name}' to origin...");
     git::remote::push_upstream("origin", &branch_name)?;
 
     success!("Successfully published release branch!");
@@ -202,10 +197,10 @@ fn publish_release(config: &GitflowConfig, name: Option<String>) -> Result<()> {
 }
 
 fn track_release(config: &GitflowConfig, name: &str) -> Result<()> {
-    let branch_name = format!("{}{}", config.get(ConfigKey::Release), name);
+    let branch_name = format!("{prefix}{name}", prefix = config.get(ConfigKey::Release));
 
     if git::branch::exists(&branch_name)? {
-        bail!("Release branch '{}' already exists locally.", branch_name);
+        bail!("Release branch '{branch_name}' already exists locally.");
     }
 
     info!("Fetching release branches from origin...");
@@ -213,13 +208,12 @@ fn track_release(config: &GitflowConfig, name: &str) -> Result<()> {
 
     if !git::remote::branch_exists("origin", &branch_name)? {
         bail!(
-            "Remote release branch 'origin/{}' does not exist.",
-            branch_name
+            "Remote release branch 'origin/{branch_name}' does not exist."
         );
     }
 
-    info!("Tracking release branch '{}' from origin...", branch_name);
-    git::branch::create(&branch_name, &format!("origin/{}", branch_name))?;
+    info!("Tracking release branch '{branch_name}' from origin...");
+    git::branch::create(&branch_name, &format!("origin/{branch_name}"))?;
 
     success!("Successfully tracking release branch!");
     Ok(())
@@ -229,14 +223,13 @@ fn resolve_release_branch_name(config: &GitflowConfig, name: Option<String>) -> 
     let prefix = config.get(ConfigKey::Release);
 
     if let Some(name) = name {
-        return Ok(format!("{}{}", prefix, name));
+        return Ok(format!("{prefix}{name}"));
     }
 
     let current = git::branch::current()?;
     if !current.starts_with(&prefix) {
         bail!(
-            "Current branch '{}' is not a release branch and no name was provided.",
-            current
+            "Current branch '{current}' is not a release branch and no name was provided."
         );
     }
 

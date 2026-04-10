@@ -19,10 +19,10 @@ pub(crate) fn colored_display<S: Display>(msg: S, level: Level) {
         Level::Debug => ("♨", Color::BrightBlack),
         Level::Item => ("•", Color::White),
     };
-    let message = format!("{}  {}", prefix, msg).color(color);
+    let message = format!("{prefix}  {msg}").color(color);
     match level {
-        Level::Info | Level::Success | Level::Debug | Level::Item => println!("{}", message),
-        Level::Warn | Level::Error => eprintln!("{}", message),
+        Level::Info | Level::Success | Level::Debug | Level::Item => println!("{message}"),
+        Level::Warn | Level::Error => eprintln!("{message}"),
     }
 }
 

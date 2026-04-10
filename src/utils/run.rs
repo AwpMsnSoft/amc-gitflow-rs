@@ -23,16 +23,14 @@ pub fn run(command: &str, args: &[&str]) -> AnyResult<String> {
         Ok(output) => output,
         Err(e) => {
             error!(
-                "Failed to execute command `{}` with args {:?}",
-                command, args
+                "Failed to execute command `{command}` with args {args:?}"
             );
             bail!(e);
         }
     };
 
     debug!(
-        "Command `{}` executed with args {:?}: {:?}",
-        command, args, output
+        "Command `{command}` executed with args {args:?}: {output:?}"
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -46,9 +44,10 @@ pub fn run(command: &str, args: &[&str]) -> AnyResult<String> {
         } else if !stdout.is_empty() {
             stdout
         } else {
-            format!("exited with code {}", output.status.code().unwrap_or(-1))
+            let code = output.status.code().unwrap_or(-1);
+            format!("exited with code {code}")
         };
-        error!("Command `{}` failed with args {:?}", command, args);
+        error!("Command `{command}` failed with args {args:?}");
         bail!(error_msg)
     }
 }
@@ -65,10 +64,9 @@ pub fn run_interactive(command: &str, args: &[&str]) -> AnyResult<()> {
         .status()?;
 
     if !status.success() {
+        let code = status.code().unwrap_or(-1);
         bail!(
-            "Command `{}` exited with code {}",
-            command,
-            status.code().unwrap_or(-1)
+            "Command `{command}` exited with code {code}"
         );
     }
     Ok(())
@@ -104,8 +102,7 @@ pub fn run_uncheck(command: &str, args: &[&str]) -> AnyResult<()> {
     let output = cmd(command, args).run()?;
 
     debug!(
-        "Command `{}` executed with args {:?}: {:?}",
-        command, args, output
+        "Command `{command}` executed with args {args:?}: {output:?}"
     );
     Ok(())
 }

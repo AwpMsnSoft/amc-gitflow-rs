@@ -89,15 +89,9 @@ fn list_features(config: &GitflowConfig, verbose: bool) -> Result<()> {
         )))?;
 
         if verbose {
-            item!(
-                "{} {}-(gh issue #{}) (full: {})",
-                mark,
-                short_name,
-                issue_id,
-                branch
-            );
+            item!("{mark} {short_name} <issue #{issue_id}>: {branch}");
         } else {
-            item!("{} {}-(gh issue #{})", mark, short_name, issue_id);
+            item!("{mark} {short_name} <issue #{issue_id}>");
         }
     }
 
@@ -113,18 +107,17 @@ fn start_feature(config: &GitflowConfig, base: Option<String>) -> Result<()> {
     }
 
     // 2. Select an issue
-    for (i, issue) in issues.iter().enumerate() {
+    issues.iter().enumerate().for_each(|(i, issue)| {
         item!(
-            "[{}] issue #{}: {} <{}>",
-            i,
-            issue.number,
-            issue.title,
-            issue.tags
+            "[{i}] issue #{number}: {title} <{tags}>",
+            number = issue.number,
+            title = issue.title,
+            tags = issue.tags
         );
-    }
+    });
 
     let selected_index = ask!(
-        &bold!("Select issue index [0-{}]", issues.len() - 1) => usize,
+        &bold!("Select issue index [0-{max_idx}]", max_idx = issues.len() - 1) => usize,
         validate: |input| *input < issues.len(),
         error: "Invalid issue index selected."
     );
@@ -143,17 +136,17 @@ fn start_feature(config: &GitflowConfig, base: Option<String>) -> Result<()> {
         config.get(ConfigKey::Develop)
     };
     if !git::branch::exists(&base_branch)? {
-        bail!("Base branch '{}' does not exist.", base_branch);
+        bail!("Base branch '{base_branch}' does not exist.");
     }
 
     let branch_name = format!("{}{}", config.get(ConfigKey::Feature), name);
     if git::branch::exists(&branch_name)? {
-        bail!("Feature branch '{}' already exists.", branch_name);
+        bail!("Feature branch '{branch_name}' already exists.");
     }
 
     info!(
-        "Creating new feature branch '{}' based on '{}' for issue #{}...",
-        branch_name, base_branch, selected_issue.number
+        "Creating new feature branch '{branch_name}' based on '{base_branch}' for issue #{issue_number}...",
+        issue_number = selected_issue.number
     );
     git::branch::create(&branch_name, &base_branch)?;
 
@@ -164,9 +157,8 @@ fn start_feature(config: &GitflowConfig, base: Option<String>) -> Result<()> {
     )?;
 
     success!(
-        "Successfully started feature '{}' for issue #{}!",
-        name,
-        selected_issue.number
+        "Successfully started feature '{name}' for issue #{issue_number}!",
+        issue_number = selected_issue.number
     );
     Ok(())
 }
@@ -174,14 +166,11 @@ fn start_feature(config: &GitflowConfig, base: Option<String>) -> Result<()> {
 fn finish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
     let prefix = config.get(ConfigKey::Feature);
     let branch_name = if let Some(n) = name {
-        format!("{}{}", prefix, n)
+        format!("{prefix}{n}")
     } else {
         let current = git::branch::current()?;
         if !current.starts_with(&prefix) {
-            bail!(
-                "Current branch '{}' is not a feature branch and no name was provided.",
-                current
-            );
+            bail!("Current branch '{current}' is not a feature branch and no name was provided.");
         }
         current
     };
@@ -191,25 +180,21 @@ fn finish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
         branch_name.clone(),
     )))
     .map_err(|_| {
-        anyhow!(
-            "No PR found for feature branch '{}'. Did you run 'publish' first?",
-            branch_name
-        )
+        anyhow!("No PR found for feature branch '{branch_name}'. Did you run 'publish' first?")
     })?;
 
     // Check whether the PR has been merged on the remote
-    info!("Checking PR #{} merge status...", pr_number);
+    info!("Checking PR #{pr_number} merge status...");
     if !gh::pr::is_merged(&pr_number)? {
         bail!(
-            "PR #{} has not been merged yet. Finish is only allowed after the remote PR is merged.",
-            pr_number,
+            "PR #{pr_number} has not been merged yet. Finish is only allowed after the remote PR is merged."
         );
     }
 
     let base_branch = config.get(ConfigKey::Develop);
 
     // Checkout develop and pull the merged changes
-    info!("Syncing '{}' with remote...", base_branch);
+    info!("Syncing '{base_branch}' with remote...");
     git::checkout::branch(&base_branch)?;
     for remote in git::remote::list()? {
         git::remote::pull(&remote, &base_branch)?;
@@ -217,17 +202,14 @@ fn finish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
 
     // Delete the local feature branch
     if git::branch::exists(&branch_name)? {
-        info!("Deleting local feature branch '{}'...", branch_name);
+        info!("Deleting local feature branch '{branch_name}'...");
         git::branch::delete(&branch_name, false)?;
     }
 
     // Delete the remote feature branch
     for remote in git::remote::list()? {
         if git::remote::branch_exists(&remote, &branch_name)? {
-            info!(
-                "Deleting remote feature branch '{}' on '{}'...",
-                branch_name, remote
-            );
+            info!("Deleting remote feature branch '{branch_name}' on '{remote}'...");
             git::branch::delete_remote(&remote, &branch_name)?;
         }
     }
@@ -240,10 +222,7 @@ fn finish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
         branch_name.clone(),
     )))?;
 
-    success!(
-        "Feature '{}' finished and cleaned up successfully!",
-        branch_name
-    );
+    success!("Feature '{branch_name}' finished and cleaned up successfully!");
     Ok(())
 }
 
@@ -251,19 +230,16 @@ fn publish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
     let prefix = config.get(ConfigKey::Feature);
     let current = git::branch::current()?;
     let branch_name = if let Some(n) = name {
-        format!("{}{}", prefix, n)
+        format!("{prefix}{n}")
     } else {
         if !current.starts_with(&prefix) {
-            bail!(
-                "Current branch '{}' is not a feature branch and no name was provided.",
-                current
-            );
+            bail!("Current branch '{current}' is not a feature branch and no name was provided.");
         }
         current
     };
 
     if !git::branch::exists(&branch_name)? {
-        bail!("Feature branch '{}' does not exist.", branch_name);
+        bail!("Feature branch '{branch_name}' does not exist.");
     }
 
     let base_branch = config.get(ConfigKey::Develop);
@@ -274,19 +250,13 @@ fn publish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
         .iter()
         .any(|remote| git::remote::branch_exists(&remote, &branch_name).unwrap_or(false))
     {
-        bail!(
-            "Feature branch '{}' is already published to remote.",
-            branch_name
-        );
+        bail!("Feature branch '{branch_name}' is already published to remote.");
     }
     if gh::pr::list("open")?
         .iter()
         .any(|pr| pr.branch == branch_name)
     {
-        bail!(
-            "A pull request for feature branch '{}' already exists.",
-            branch_name
-        );
+        bail!("A pull request for feature branch '{branch_name}' already exists.");
     }
 
     // Get linked issue number if exists
@@ -296,19 +266,13 @@ fn publish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
 
     // Push feature branch to remote
     for remote in git::remote::list()? {
-        info!(
-            "Publishing feature branch '{}' to {}...",
-            branch_name, remote
-        );
+        info!("Publishing feature branch '{branch_name}' to {remote}...");
         git::remote::push_upstream(&remote, &branch_name)?;
     }
 
     // Create a PR targeting the develop branch
-    let pr_title = format!("feat: {}", short_name);
-    info!(
-        "Creating pull request from '{}' into '{}'...",
-        branch_name, base_branch
-    );
+    let pr_title = format!("feat: {short_name}");
+    info!("Creating pull request from '{branch_name}' into '{base_branch}'...");
 
     let pr_body = format!(
         r"
@@ -359,22 +323,16 @@ fn publish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
         pr_number.clone(),
     )?;
 
-    success!(
-        "Successfully published feature branch and created PR: #{}",
-        pr_number
-    );
+    success!("Successfully published feature branch and created PR: #{pr_number}");
     Ok(())
 }
 
 fn track_feature(config: &GitflowConfig, name: &str, remote: &str) -> Result<()> {
     let branch_name = format!("{}{}", config.get(ConfigKey::Feature), name);
 
-    info!(
-        "Tracking feature branch '{}' from {}...",
-        branch_name, remote
-    );
+    info!("Tracking feature branch '{branch_name}' from {remote}...");
     git::remote::fetch(remote)?;
-    git::branch::create(&branch_name, &format!("{}/{}", remote, branch_name))?;
+    git::branch::create(&branch_name, &format!("{remote}/{branch_name}"))?;
 
     success!("Successfully tracking feature branch!");
     Ok(())

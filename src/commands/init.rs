@@ -72,7 +72,7 @@ pub fn run(args: InitArgs) -> AnyResult<()> {
                     error!(
                         "Failed to create remote repository. It might already exist or you might not have permissions."
                     );
-                    bail!("Failed to create remote repository: {}", e);
+                    bail!("Failed to create remote repository: {e}");
                 }
             }
         } else {
@@ -108,9 +108,10 @@ pub fn run(args: InitArgs) -> AnyResult<()> {
     }
 
     if !git::branch::exists(&config.get(ConfigKey::Develop))? {
-        info!("Creating {} branch...", config.get(ConfigKey::Develop));
+        let develop_branch = config.get(ConfigKey::Develop);
+        info!("Creating {develop_branch} branch...");
         git::branch::create(
-            &config.get(ConfigKey::Develop),
+            &develop_branch,
             &config.get(ConfigKey::Product),
         )?;
     }
@@ -118,7 +119,7 @@ pub fn run(args: InitArgs) -> AnyResult<()> {
     // 7. Push local branches to remote if needed
     if args.remote {
         for remote in git::remote::list()? {
-            info!("Pushing branches to remote '{}'...", remote);
+            info!("Pushing branches to remote '{remote}'...");
             git::remote::push(&remote, &config.get(ConfigKey::Product))?;
             git::remote::push(&remote, &config.get(ConfigKey::Develop))?;
         }

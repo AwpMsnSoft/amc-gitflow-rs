@@ -88,7 +88,7 @@ pub mod pr {
             .map(|line| {
                 let parts = line.split('\t').collect::<Vec<_>>();
                 if parts.len() < 4 {
-                    bail!("Unexpected line format from `gh pr list`: '{}'", line);
+                    bail!("Unexpected line format from `gh pr list`: '{line}'");
                 }
                 Ok(Status {
                     number: parts[0].to_string(),
@@ -144,7 +144,7 @@ pub mod issue {
             .map(|line| {
                 let parts: Vec<&str> = line.split('\t').collect();
                 if parts.len() < 4 {
-                    bail!("Unexpected line format from `gh issue list`: '{}'", line);
+                    bail!("Unexpected line format from `gh issue list`: '{line}'");
                 }
                 Ok(State {
                     number: parts[0].to_string(),
@@ -174,7 +174,7 @@ pub mod repo {
     /// Create remote repository
     pub fn create(name: &str, is_public: bool, owner: &str) -> AnyResult<String> {
         let mut args = vec!["repo", "create"];
-        let target = format!("{}/{}", owner, name);
+        let target = format!("{owner}/{name}");
         args.push(&target);
 
         args.push(if is_public { "--public" } else { "--private" });

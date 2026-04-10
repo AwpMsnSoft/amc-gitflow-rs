@@ -57,10 +57,10 @@ fn bump_version(config: &mut GitflowConfig, target: BumpType) -> Result<()> {
         BumpType::Patch => increment_semver(&current, 2)?,
     };
 
-    info!("Bumping version from {} to {}...", current, next);
+    info!("Bumping version from {current} to {next}...");
     config.set(ConfigKey::Version, next.clone());
     config.save()?;
-    success!("Successfully bumped version to {}!", next);
+    success!("Successfully bumped version to {next}!");
     Ok(())
 }
 
@@ -74,14 +74,13 @@ fn increment_semver(version: &str, index: usize) -> Result<String> {
         .split('.')
         .map(|s| {
             s.parse()
-                .map_err(|_| anyhow!("Invalid semver: {}", version))
+                .map_err(|_| anyhow!("Invalid semver: {version}"))
         })
         .collect::<Result<Vec<u32>>>()?;
 
     if parts.len() != 3 {
         return Err(anyhow!(
-            "Only x.y.z semver format is supported for automatic bumping. Current: {}",
-            version
+            "Only x.y.z semver format is supported for automatic bumping. Current: {version}"
         ));
     }
 
@@ -90,5 +89,8 @@ fn increment_semver(version: &str, index: usize) -> Result<String> {
         parts[i] = 0;
     }
 
-    Ok(format!("{}.{}.{}", parts[0], parts[1], parts[2]))
+    let major = parts[0];
+    let minor = parts[1];
+    let patch = parts[2];
+    Ok(format!("{major}.{minor}.{patch}"))
 }
