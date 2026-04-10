@@ -1,5 +1,6 @@
 use anyhow::{Result, anyhow, bail};
 use clap::{Args, Subcommand};
+use velvetio::ask;
 
 use crate::core::{
     config::{
@@ -9,7 +10,7 @@ use crate::core::{
     gh, git,
 };
 use crate::utils::error::IntoAnyResult;
-use crate::{error, info, item, success};
+use crate::{bold, error, info, item, success};
 
 #[derive(Args, Debug)]
 pub struct BugfixArgs {
@@ -25,10 +26,8 @@ pub enum BugfixSubcommand {
         #[arg(short, long)]
         verbose: bool,
     },
-    /// Start a new bugfix branch
+    /// Start a new bugfix branch from a GitHub issue
     Start {
-        /// The name of the bugfix
-        name: String,
         /// The base branch (defaults to develop)
         base: Option<String>,
     },
@@ -61,7 +60,7 @@ pub fn run(args: BugfixArgs) -> Result<()> {
 
     match args.command {
         BugfixSubcommand::List { verbose } => list_bugfixes(&config, verbose),
-        BugfixSubcommand::Start { name, base } => start_bugfix(&config, &name, base),
+        BugfixSubcommand::Start { base } => start_bugfix(&config, base),
         BugfixSubcommand::Finish { name } => finish_bugfix(&config, name),
         BugfixSubcommand::Publish { name } => publish_bugfix(&config, name),
         BugfixSubcommand::Track { name, remote } => track_bugfix(&config, &name, &remote),
@@ -86,31 +85,90 @@ fn list_bugfixes(config: &GitflowConfig, verbose: bool) -> Result<()> {
     for branch in bugfix_branches {
         let short_name = &branch[prefix.len()..];
         let mark = if branch == current { "*" } else { " " };
+        let issue_id = get_private(PrivateConfigKey::Bugfix(SubConfigKey::Issue(
+            branch.clone(),
+        )))?;
+
         if verbose {
-            item!("{} {} (full: {})", mark, short_name, branch);
+            item!(
+                "{} {}-(gh issue #{}) (full: {})",
+                mark,
+                short_name,
+                issue_id,
+                branch
+            );
         } else {
-            item!("{} {}", mark, short_name);
+            item!("{} {}-(gh issue #{})", mark, short_name, issue_id);
         }
     }
 
     Ok(())
 }
 
-fn start_bugfix(config: &GitflowConfig, name: &str, base: Option<String>) -> Result<()> {
-    let branch_name = format!("{}{}", config.get(ConfigKey::Bugfix), name);
-    let base_branch = base.unwrap_or_else(|| config.get(ConfigKey::Develop));
+fn start_bugfix(config: &GitflowConfig, base: Option<String>) -> Result<()> {
+    // 1. Fetch open issues
+    info!("Fetching open issues from GitHub...");
+    let issues = gh::issue::list()?;
+    if issues.is_empty() {
+        bail!("No open issues found on GitHub. Please create an issue first.");
+    }
 
+    // 2. Select an issue
+    for (i, issue) in issues.iter().enumerate() {
+        item!(
+            "[{}] issue #{}: {} <{}>",
+            i,
+            issue.number,
+            issue.title,
+            issue.tags
+        );
+    }
+
+    let selected_index = ask!(
+        &bold!("Select issue index [0-{}]", issues.len() - 1) => usize,
+        validate: |input| *input < issues.len(),
+        error: "Invalid issue index selected."
+    );
+    let selected_issue = &issues[selected_index];
+
+    // 3. Prompt for branch name
+    let name = ask!(
+        &bold!("Enter bugfix name"),
+        validate: |input| !input.trim().is_empty(),
+        error: "Bugfix name cannot be empty."
+    );
+
+    let base_branch = if let Some(base) = base {
+        base
+    } else {
+        config.get(ConfigKey::Develop)
+    };
+    if !git::branch::exists(&base_branch)? {
+        bail!("Base branch '{}' does not exist.", base_branch);
+    }
+
+    let branch_name = format!("{}{}", config.get(ConfigKey::Bugfix), name);
     if git::branch::exists(&branch_name)? {
         bail!("Bugfix branch '{}' already exists.", branch_name);
     }
 
     info!(
-        "Creating new bugfix branch '{}' based on '{}'...",
-        branch_name, base_branch
+        "Creating new bugfix branch '{}' based on '{}' for issue #{}...",
+        branch_name, base_branch, selected_issue.number
     );
     git::branch::create(&branch_name, &base_branch)?;
 
-    success!("Successfully started bugfix '{}'!", name);
+    // 4. Bind issue to branch using private key
+    set_private(
+        PrivateConfigKey::Bugfix(SubConfigKey::Issue(branch_name.clone())),
+        selected_issue.number.clone(),
+    )?;
+
+    success!(
+        "Successfully started bugfix '{}' for issue #{}!",
+        name,
+        selected_issue.number
+    );
     Ok(())
 }
 
@@ -175,8 +233,11 @@ fn finish_bugfix(config: &GitflowConfig, name: Option<String>) -> Result<()> {
         }
     }
 
-    // Clean up the stored private config key
+    // Clean up the stored private config keys
     unset_private(PrivateConfigKey::Bugfix(SubConfigKey::Pr(
+        branch_name.clone(),
+    )))?;
+    unset_private(PrivateConfigKey::Bugfix(SubConfigKey::Issue(
         branch_name.clone(),
     )))?;
 
@@ -229,6 +290,11 @@ fn publish_bugfix(config: &GitflowConfig, name: Option<String>) -> Result<()> {
         );
     }
 
+    // Get linked issue number if exists
+    let issue_number = get_private(PrivateConfigKey::Bugfix(SubConfigKey::Issue(
+        branch_name.clone(),
+    )))?;
+
     // Push bugfix branch to remote
     for remote in git::remote::list()? {
         info!(
@@ -244,7 +310,8 @@ fn publish_bugfix(config: &GitflowConfig, name: Option<String>) -> Result<()> {
         "Creating pull request from '{}' into '{}'...",
         branch_name, base_branch
     );
-    let pr_body = r"
+    let pr_body = format!(
+        r"
 ### Bug Description
 - What is the current behavior?
 - What is the expected behavior?
@@ -261,9 +328,10 @@ fn publish_bugfix(config: &GitflowConfig, name: Option<String>) -> Result<()> {
 - [ ] Docs updated (if needed)
 
 ### Links
-- Issues: Fixes #123 (optional)
+- Issue: #{issue_number}
 - References: <urls>
-";
+",
+    );
     gh::pr::create(
         &pr_title,
         &pr_body,
