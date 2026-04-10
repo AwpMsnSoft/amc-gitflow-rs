@@ -1,12 +1,16 @@
 use anyhow::{Result, anyhow, bail};
 use clap::{Args, Subcommand};
+use velvetio::ask;
 
 use crate::core::{
-    config::{ConfigKey, GitflowConfig, private::{*, ConfigKey as PrivateConfigKey}},
+    config::{
+        ConfigKey, GitflowConfig,
+        private::{ConfigKey as PrivateConfigKey, *},
+    },
     gh, git,
 };
 use crate::utils::error::IntoAnyResult;
-use crate::{error, info, item, success};
+use crate::{bold, error, info, item, success};
 
 #[derive(Args, Debug)]
 pub struct FeatureArgs {
@@ -22,10 +26,8 @@ pub enum FeatureSubcommand {
         #[arg(short, long)]
         verbose: bool,
     },
-    /// Start a new feature branch
+    /// Start a new feature branch from a GitHub issue
     Start {
-        /// The name of the feature
-        name: String,
         /// The base branch (defaults to develop)
         base: Option<String>,
     },
@@ -57,7 +59,7 @@ pub fn run(args: FeatureArgs) -> Result<()> {
 
     match args.command {
         FeatureSubcommand::List { verbose } => list_features(&config, verbose),
-        FeatureSubcommand::Start { name, base } => start_feature(&config, &name, base),
+        FeatureSubcommand::Start { base } => start_feature(&config, base),
         FeatureSubcommand::Finish { name } => finish_feature(&config, name),
         FeatureSubcommand::Publish { name } => publish_feature(&config, name),
         FeatureSubcommand::Track { name, remote } => track_feature(&config, &name, &remote),
@@ -82,31 +84,90 @@ fn list_features(config: &GitflowConfig, verbose: bool) -> Result<()> {
     for branch in feature_branches {
         let short_name = &branch[prefix.len()..];
         let mark = if branch == current { "*" } else { " " };
+        let issue_id = get_private(PrivateConfigKey::Feature(SubConfigKey::Issue(
+            branch.clone(),
+        )))?;
+
         if verbose {
-            item!("{} {} (full: {})", mark, short_name, branch);
+            item!(
+                "{} {}-(gh issue #{}) (full: {})",
+                mark,
+                short_name,
+                issue_id,
+                branch
+            );
         } else {
-            item!("{} {}", mark, short_name);
+            item!("{} {}-(gh issue #{})", mark, short_name, issue_id);
         }
     }
 
     Ok(())
 }
 
-fn start_feature(config: &GitflowConfig, name: &str, base: Option<String>) -> Result<()> {
-    let branch_name = format!("{}{}", config.get(ConfigKey::Feature), name);
-    let base_branch = base.unwrap_or_else(|| config.get(ConfigKey::Develop));
+fn start_feature(config: &GitflowConfig, base: Option<String>) -> Result<()> {
+    // 1. Fetch open issues
+    info!("Fetching open issues from GitHub...");
+    let issues = gh::issue::list()?;
+    if issues.is_empty() {
+        bail!("No open issues found on GitHub. Please create an issue first.");
+    }
 
+    // 2. Select an issue
+    for (i, issue) in issues.iter().enumerate() {
+        item!(
+            "[{}] issue #{}: {} <{}>",
+            i,
+            issue.number,
+            issue.title,
+            issue.tags
+        );
+    }
+
+    let selected_index = ask!(
+        &bold!("Select issue index [0-{}]", issues.len() - 1) => usize,
+        validate: |input| *input < issues.len(),
+        error: "Invalid issue index selected."
+    );
+    let selected_issue = &issues[selected_index];
+
+    // 3. Prompt for branch name (defaulting to issue-linked name)
+    let name = ask!(
+        &bold!("Enter feature name"),
+        validate: |input| !input.trim().is_empty(),
+        error: "Feature name cannot be empty."
+    );
+
+    let base_branch = if let Some(base) = base {
+        base
+    } else {
+        config.get(ConfigKey::Develop)
+    };
+    if !git::branch::exists(&base_branch)? {
+        bail!("Base branch '{}' does not exist.", base_branch);
+    }
+
+    let branch_name = format!("{}{}", config.get(ConfigKey::Feature), name);
     if git::branch::exists(&branch_name)? {
         bail!("Feature branch '{}' already exists.", branch_name);
     }
 
     info!(
-        "Creating new feature branch '{}' based on '{}'...",
-        branch_name, base_branch
+        "Creating new feature branch '{}' based on '{}' for issue #{}...",
+        branch_name, base_branch, selected_issue.number
     );
     git::branch::create(&branch_name, &base_branch)?;
 
-    success!("Successfully started feature '{}'!", name);
+    // 4. Bind issue to branch using private key
+    set_private(
+        PrivateConfigKey::Feature(SubConfigKey::Issue(branch_name.clone())),
+        selected_issue.number.clone(),
+    )?;
+
+    success!(
+        "Successfully started feature '{}' for issue #{}!",
+        name,
+        selected_issue.number
+    );
     Ok(())
 }
 
@@ -171,8 +232,11 @@ fn finish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
         }
     }
 
-    // Clean up the stored private config key
+    // Clean up the stored private config keys
     unset_private(PrivateConfigKey::Feature(SubConfigKey::Pr(
+        branch_name.clone(),
+    )))?;
+    unset_private(PrivateConfigKey::Feature(SubConfigKey::Issue(
         branch_name.clone(),
     )))?;
 
@@ -225,6 +289,11 @@ fn publish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
         );
     }
 
+    // Get linked issue number if exists
+    let issue_number = get_private(PrivateConfigKey::Feature(SubConfigKey::Issue(
+        branch_name.clone(),
+    )))?;
+
     // Push feature branch to remote
     for remote in git::remote::list()? {
         info!(
@@ -240,7 +309,9 @@ fn publish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
         "Creating pull request from '{}' into '{}'...",
         branch_name, base_branch
     );
-    let pr_body = r"
+
+    let pr_body = format!(
+        r"
 ### What & Why
 - Summary:
 
@@ -256,12 +327,13 @@ fn publish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
 - Impact / alternatives / rollout:
 
 ### Links
-- Issues: Fixes #123 (optional)
+- Issue: #{issue_number}
 - References: <urls>
 
 ### Breaking Changes (if any)
 - Description & migration notes:
-";
+",
+    );
     gh::pr::create(
         &pr_title,
         &pr_body,

@@ -200,6 +200,7 @@ pub mod private {
 
     pub enum SubConfigKey {
         Pr(String),
+        Issue(String),
         #[allow(dead_code)]
         Custom(String),
     }
@@ -209,6 +210,9 @@ pub mod private {
             match self {
                 SubConfigKey::Pr(branch_name) => {
                     format!("pr.{}", branch_name.replace('/', ".").replace('_', "-"))
+                }
+                SubConfigKey::Issue(branch_name) => {
+                    format!("issue.{}", branch_name.replace('/', ".").replace('_', "-"))
                 }
                 SubConfigKey::Custom(key) => key.clone(),
             }

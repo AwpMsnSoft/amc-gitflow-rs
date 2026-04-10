@@ -125,6 +125,39 @@ pub mod pr {
     }
 }
 
+pub mod issue {
+    use super::*;
+
+    #[derive(Debug, Clone)]
+    pub struct State {
+        pub number: String,
+        pub state: String,
+        pub title: String,
+        pub tags: String,
+    }
+
+    /// List open issues
+    pub fn list() -> AnyResult<Vec<State>> {
+        run("gh", &["issue", "list", "--state", "open"])?
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(|line| {
+                let parts: Vec<&str> = line.split('\t').collect();
+                if parts.len() < 4 {
+                    bail!("Unexpected line format from `gh issue list`: '{}'", line);
+                }
+                Ok(State {
+                    number: parts[0].to_string(),
+                    state: parts[1].to_string(),
+                    title: parts[2].to_string(),
+                    tags: parts[3].to_string(),
+                })
+            })
+            .collect::<Vec<_>>()
+            .flip()
+    }
+}
+
 pub mod repo {
     use super::*;
 
