@@ -1,14 +1,18 @@
 use anyhow::{Result, anyhow, bail};
 use clap::{Args, Subcommand};
-use colored::Colorize;
 use velvetio::ask;
 
-use crate::commands::version::get_current_version;
+use crate::commands::version::{BumpType, bump_version, get_current_version};
 use crate::core::{
-    config::{ConfigKey, GitflowConfig},
-    git,
+    config::{
+        ConfigKey, GitflowConfig,
+        private::{ConfigKey as PrivateConfigKey, *},
+    },
+    gh, git,
 };
-use crate::{error, info, item, success};
+use crate::utils::error::IntoAnyResult;
+use crate::utils::run::edit_in_editor;
+use crate::{bold, error, info, item, success};
 
 #[derive(Args, Debug)]
 pub struct ReleaseArgs {
@@ -26,30 +30,33 @@ pub enum ReleaseSubcommand {
     },
     /// Start a new release branch
     Start {
-        /// The release version/name
+        /// The name of the release branch
         name: String,
         /// The base branch (defaults to develop)
         base: Option<String>,
     },
     /// Finish a release branch
     Finish {
-        /// The release version/name
+        /// The name of the release branch
         name: Option<String>,
+        /// Skip interactive prompts (use auto-generated tag and release notes)
+        #[arg(short, long, default_value_t = false)]
+        auto: bool,
     },
     /// Publish a release branch to remote
     Publish {
-        /// The release version/name
+        /// The name of the release branch
         name: Option<String>,
     },
     /// Track a release branch from remote
     Track {
-        /// The release version/name
+        /// The name of the release branch
         name: String,
     },
 }
 
 pub fn run(args: ReleaseArgs) -> Result<()> {
-    let config = GitflowConfig::load().map_err(|_| {
+    let mut config = GitflowConfig::load().map_err(|_| {
         error!("Not initialized for amc-gitflow. Run 'amc-gitflow-rs init' first.");
         anyhow!("Not initialized for amc-gitflow.")
     })?;
@@ -57,7 +64,7 @@ pub fn run(args: ReleaseArgs) -> Result<()> {
     match args.command {
         ReleaseSubcommand::List { verbose } => list_releases(&config, verbose),
         ReleaseSubcommand::Start { name, base } => start_release(&config, &name, base),
-        ReleaseSubcommand::Finish { name } => finish_release(&config, name),
+        ReleaseSubcommand::Finish { name, auto } => finish_release(&mut config, name, auto),
         ReleaseSubcommand::Publish { name } => publish_release(&config, name),
         ReleaseSubcommand::Track { name } => track_release(&config, &name),
     }
@@ -107,92 +114,202 @@ fn start_release(config: &GitflowConfig, name: &str, base: Option<String>) -> Re
         );
     }
 
-    info!(
-        "Creating new release branch '{branch_name}' based on '{base_branch}'..."
-    );
+    info!("Creating new release branch '{branch_name}' based on '{base_branch}'...");
     git::branch::create(&branch_name, &base_branch)?;
 
     success!("Successfully started release '{name}'!");
     Ok(())
 }
 
-fn finish_release(config: &GitflowConfig, name: Option<String>) -> Result<()> {
+fn finish_release(config: &mut GitflowConfig, name: Option<String>, auto: bool) -> Result<()> {
     let branch_name = resolve_release_branch_name(config, name)?;
-    let release_name = branch_name
-        .strip_prefix(&config.get(ConfigKey::Release))
-        .unwrap_or(&branch_name);
+    let prefix = config.get(ConfigKey::Release);
+    let release_name = branch_name.strip_prefix(&prefix).unwrap_or(&branch_name);
 
-    if !git::branch::exists(&branch_name)? {
-        bail!("Release branch '{branch_name}' does not exist.");
+    // 1. Require a PR to have been created via `publish`
+    let pr_number = get_private(PrivateConfigKey::Release(SubConfigKey::Pr(
+        branch_name.clone(),
+    )))
+    .map_err(|_| {
+        anyhow!("No PR found for release branch '{branch_name}'. Did you run 'publish' first?")
+    })?;
+
+    // 2. Check the PR has been merged on GitHub
+    info!("Checking PR #{pr_number} merge status...");
+    if !gh::pr::is_merged(&pr_number)? {
+        bail!("PR #{pr_number} has not been merged yet. Merge it on GitHub before finishing.");
     }
 
-    let current_project_version = get_current_version()?;
-    let default_tag = format!(
-        "{}{}",
-        config.get(ConfigKey::Versiontag),
-        current_project_version
-    );
-
-    let tag_name: String;
-    loop {
-        let input = ask!(&"Enter the tag name".bold().to_string(), default: default_tag.clone());
-        if input.trim().is_empty() {
-            error!("Tag name cannot be empty.");
-            continue;
-        }
-        if git::tag::exists(&input)? {
-            error!(
-                "Tag '{input}' already exists. Please enter a different tag name."
-            );
-            continue;
-        }
-        tag_name = input;
-        break;
-    }
-
-    info!("Finishing release '{branch_name}'...");
-
+    // 3. Sync product branch from remote
     let product_branch = config.get(ConfigKey::Product);
+    info!("Syncing '{product_branch}' with remote...");
     git::checkout::branch(&product_branch)?;
-    info!(
-        "Merging '{branch_name}' into '{product_branch}'..."
-    );
-    git::merge::no_fast_forward(&branch_name)?;
+    for remote in git::remote::list()? {
+        git::remote::pull(&remote, &product_branch)?;
+    }
 
+    // 4. Determine tag name and check for tag conflicts
+    let current_version = get_current_version()?;
+    let tag_name = if auto {
+        current_version
+    } else {
+        ask!(
+            &bold!("Enter a tag name (without prefix)"),
+            default: current_version
+        )
+    };
+    if git::tag::exists(&tag_name)? {
+        bail!("Tag '{tag_name}' already exists. Please choose a different tag name.");
+    }
+
+    // 5. Create git tag on product
     info!("Creating release tag '{tag_name}'...");
     git::tag::create(&tag_name, &format!("Release {release_name}"))?;
 
+    // 6. Push tag to remotes
+    for remote in git::remote::list()? {
+        info!("Pushing tag '{tag_name}' to {remote}...");
+        git::remote::push(&remote, &tag_name)?;
+    }
+
+    // 7. Create GitHub Release
+    info!("Creating GitHub Release for tag '{tag_name}'...");
+    let release_title = format!("Release {release_name}");
+
+    if auto {
+        // Use auto-generated notes directly
+        gh::release::create(&tag_name, &release_title, None)?;
+    } else {
+        // Auto-generated notes as starting point, then open $EDITOR
+        let auto_notes = gh::release::generate_notes(&tag_name, &product_branch, None)?;
+        let notes = edit_in_editor(&auto_notes)?;
+        gh::release::create(&tag_name, &release_title, Some(notes))?;
+    }
+
+    // 8. Back-merge: product → develop
     let develop_branch = config.get(ConfigKey::Develop);
+
+    info!("Syncing '{develop_branch}' with remote...");
     git::checkout::branch(&develop_branch)?;
-    info!(
-        "Back-merging '{branch_name}' into '{develop_branch}'..."
-    );
-    git::merge::no_fast_forward(&branch_name)?;
+    for remote in git::remote::list()? {
+        git::remote::pull(&remote, &develop_branch)?;
+    }
 
-    info!("Deleting release branch '{branch_name}'...");
-    git::branch::delete(&branch_name, false)?;
+    info!("Back-merging '{product_branch}' into '{develop_branch}'...");
+    git::merge::no_fast_forward(&product_branch)?;
 
-    success!("Successfully finished release '{release_name}'!");
+    // Push back-merge to remotes
+    for remote in git::remote::list()? {
+        git::remote::push(&remote, &develop_branch)?;
+    }
+
+    // 9. Clean up: delete local and remote release branches
+    if git::branch::exists(&branch_name)? {
+        info!("Deleting local release branch '{branch_name}'...");
+        git::branch::delete(&branch_name, false)?;
+    }
+
+    for remote in git::remote::list()? {
+        if git::remote::branch_exists(&remote, &branch_name)? {
+            info!("Deleting remote release branch '{branch_name}' on '{remote}'...");
+            git::branch::delete_remote(&remote, &branch_name)?;
+        }
+    }
+
+    // 10. Clean up private config
+    unset_private(PrivateConfigKey::Release(SubConfigKey::Pr(
+        branch_name.clone(),
+    )))?;
+
+    // 11. Bump version if auto flag is set
+    if auto {
+        bump_version(config, BumpType::Patch)?;
+    }
+
+    success!("Release '{release_name}' finished! Tag: {tag_name}, GitHub Release created.");
     Ok(())
 }
 
 fn publish_release(config: &GitflowConfig, name: Option<String>) -> Result<()> {
     let branch_name = resolve_release_branch_name(config, name)?;
+    let prefix = config.get(ConfigKey::Release);
+    let short_name = branch_name.strip_prefix(&prefix).unwrap_or(&branch_name);
+    let product_branch = config.get(ConfigKey::Product);
 
     if !git::branch::exists(&branch_name)? {
         bail!("Release branch '{branch_name}' does not exist.");
     }
 
-    if git::remote::branch_exists("origin", &branch_name)? {
-        bail!(
-            "Remote release branch 'origin/{branch_name}' already exists."
-        );
+    // Check if already published
+    if git::remote::list()?
+        .iter()
+        .any(|remote| git::remote::branch_exists(remote, &branch_name).unwrap_or(false))
+    {
+        bail!("Release branch '{branch_name}' is already published to remote.");
+    }
+    if gh::pr::list("open")?
+        .iter()
+        .any(|pr| pr.branch == branch_name)
+    {
+        bail!("A pull request for release branch '{branch_name}' already exists.");
     }
 
-    info!("Publishing release branch '{branch_name}' to origin...");
-    git::remote::push_upstream("origin", &branch_name)?;
+    // Push release branch to all remotes
+    for remote in git::remote::list()? {
+        info!("Publishing release branch '{branch_name}' to {remote}...");
+        git::remote::push_upstream(&remote, &branch_name)?;
+    }
 
-    success!("Successfully published release branch!");
+    // Create a PR targeting the product branch (not develop!)
+    let pr_title = format!("release: {short_name}");
+    info!("Creating pull request from '{branch_name}' into '{product_branch}'...");
+
+    let pr_body = format!(
+        r"
+## Release {short_name}
+
+### Summary
+- 
+
+### Changelog
+- 
+
+### Checklist
+- [ ] Version bumped
+- [ ] All tests passing
+- [ ] Documentation updated (if needed)
+- [ ] Breaking changes documented (if any)
+
+### Notes
+- 
+",
+    );
+    gh::pr::create(
+        &pr_title,
+        &pr_body,
+        &product_branch,
+        &branch_name,
+        Some(&["release"]),
+    )?;
+
+    // Persist the PR number so `finish` can look it up
+    let pr_number = gh::pr::list("open")?
+        .iter()
+        .filter_map(|pr| {
+            if pr.branch == branch_name {
+                Some(pr.number.clone())
+            } else {
+                None
+            }
+        })
+        .next()
+        .into_anyresult()?;
+    set_private(
+        PrivateConfigKey::Release(SubConfigKey::Pr(branch_name.clone())),
+        pr_number.clone(),
+    )?;
+
+    success!("Successfully published release branch and created PR: #{pr_number}");
     Ok(())
 }
 
@@ -207,9 +324,7 @@ fn track_release(config: &GitflowConfig, name: &str) -> Result<()> {
     git::remote::fetch("origin")?;
 
     if !git::remote::branch_exists("origin", &branch_name)? {
-        bail!(
-            "Remote release branch 'origin/{branch_name}' does not exist."
-        );
+        bail!("Remote release branch 'origin/{branch_name}' does not exist.");
     }
 
     info!("Tracking release branch '{branch_name}' from origin...");
@@ -228,9 +343,7 @@ fn resolve_release_branch_name(config: &GitflowConfig, name: Option<String>) -> 
 
     let current = git::branch::current()?;
     if !current.starts_with(&prefix) {
-        bail!(
-            "Current branch '{current}' is not a release branch and no name was provided."
-        );
+        bail!("Current branch '{current}' is not a release branch and no name was provided.");
     }
 
     Ok(current)

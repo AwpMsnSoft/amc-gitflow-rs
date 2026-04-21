@@ -49,7 +49,7 @@ pub fn show_version(config: &GitflowConfig) -> Result<()> {
     Ok(())
 }
 
-fn bump_version(config: &mut GitflowConfig, target: BumpType) -> Result<()> {
+pub fn bump_version(config: &mut GitflowConfig, target: BumpType) -> Result<()> {
     let current = config.get(ConfigKey::Version);
     let next = match target {
         BumpType::Major => increment_semver(&current, 0)?,

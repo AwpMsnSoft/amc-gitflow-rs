@@ -184,6 +184,7 @@ pub mod private {
     pub enum ConfigKey {
         Feature(SubConfigKey),
         Bugfix(SubConfigKey),
+        Release(SubConfigKey),
         #[allow(dead_code)]
         Custom(String, String), // (category, key)
     }
@@ -193,6 +194,7 @@ pub mod private {
             match self {
                 ConfigKey::Feature(sub) => format!("feature.{}", sub.as_key()),
                 ConfigKey::Bugfix(sub) => format!("bugfix.{}", sub.as_key()),
+                ConfigKey::Release(sub) => format!("release.{}", sub.as_key()),
                 ConfigKey::Custom(cat, key) => format!("{}.{}", cat, key),
             }
         }
@@ -209,10 +211,10 @@ pub mod private {
         pub fn as_key(&self) -> String {
             match self {
                 SubConfigKey::Pr(branch_name) => {
-                    format!("pr.{}", branch_name.replace('/', ".").replace('_', "-"))
+                    format!("pr.{}", branch_name.replace(['/', '_', '.'], "-"))
                 }
                 SubConfigKey::Issue(branch_name) => {
-                    format!("issue.{}", branch_name.replace('/', ".").replace('_', "-"))
+                    format!("issue.{}", branch_name.replace(['/', '_', '.'], "-"))
                 }
                 SubConfigKey::Custom(key) => key.clone(),
             }
@@ -220,20 +222,20 @@ pub mod private {
     }
 
     /// Get a private configuration value by key. This is for any additional configuration values that may be needed by commands but are not part of the core gitflow configuration.
-    /// NOTE: '/' and '_' in keys are replaced with '.' and '-' respectively to avoid issues with git config key parsing.
+    /// NOTE: '/', '_', and '.' in keys are replaced with '-' to avoid issues with git config key parsing.
     pub fn get_private(key: ConfigKey) -> AnyResult<String> {
         git::config::get(&format!("amc-gitflow-rs.private.{}", key.as_key()))
     }
 
     /// Set a private configuration value by key. This is for any additional configuration values that may be needed by commands but are not part of the core gitflow configuration.
-    /// NOTE: '/' and '_' in keys are replaced with '.' and '-' respectively to avoid issues with git config key parsing.
+    /// NOTE: '/', '_', and '.' in keys are replaced with '-' to avoid issues with git config key parsing.
     pub fn set_private(key: ConfigKey, value: String) -> AnyResult<()> {
         git::config::set(&format!("amc-gitflow-rs.private.{}", key.as_key()), &value)?;
         Ok(())
     }
 
     /// Unset a private configuration value by key. This is for any additional configuration values that may be needed by commands but are not part of the core gitflow configuration.
-    /// NOTE: '/' and '_' in keys are replaced with '.' and '-' respectively to avoid issues with git config key parsing.
+    /// NOTE: '/', '_', and '.' in keys are replaced with '-' to avoid issues with git config key parsing.
     pub fn unset_private(key: ConfigKey) -> AnyResult<()> {
         git::config::unset(&format!("amc-gitflow-rs.private.{}", key.as_key()))?;
         Ok(())

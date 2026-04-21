@@ -188,11 +188,63 @@ pub mod repo {
 pub mod release {
     use super::*;
 
-    /// Create a release
-    pub fn create(tag: &str, title: &str, notes: &str) -> AnyResult<String> {
-        run(
-            "gh",
-            &["release", "create", tag, "--title", title, "--notes", notes],
-        )
+    /// Create a release with explicit notes
+    pub fn create(tag: &str, title: &str, notes: Option<String>) -> AnyResult<String> {
+        let mut args = vec!["release", "create", tag, "--title", title];
+
+        if let Some(notes) = notes {
+            args.push("--notes");
+            args.push(&notes);
+            run("gh", &args)
+        } else {
+            args.push("--generate-notes");
+            run("gh", &args)
+        }
+    }
+
+    /// Generate release notes draft (without creating the release).
+    /// Uses `gh api` to call the generate-release-notes endpoint.
+    /// Returns the auto-generated markdown body.
+    pub fn generate_notes(
+        tag: &str,
+        target: &str,
+        previous_tag: Option<&str>,
+    ) -> AnyResult<String> {
+        let mut args = vec!["api", "repos/{owner}/{repo}/releases/generate-notes", "-f"];
+        let tag_field = format!("tag_name={tag}");
+        args.push(&tag_field);
+        args.push("-f");
+        let target_field = format!("target_commitish={target}");
+        args.push(&target_field);
+        if let Some(prev) = previous_tag {
+            args.push("-f");
+            let prev_field = format!("previous_tag_name={prev}");
+            args.push(&prev_field);
+            let output = run("gh", &args)?;
+            // The API returns JSON: { "name": "...", "body": "..." }
+            // Extract the body field
+            extract_body_from_json(&output)
+        } else {
+            let output = run("gh", &args)?;
+            extract_body_from_json(&output)
+        }
+    }
+
+    fn extract_body_from_json(json: &str) -> AnyResult<String> {
+        // Minimal JSON extraction for the "body" field
+        let re = Regex::new(r#""body"\s*:\s*"((?:[^"\\]|\\.)*)""#).unwrap();
+        if let Some(caps) = re.captures(json) {
+            if let Some(body) = caps.get(1) {
+                let unescaped = body
+                    .as_str()
+                    .replace("\\n", "\n")
+                    .replace("\\r", "")
+                    .replace("\\\"", "\"")
+                    .replace("\\\\", "\\");
+                return Ok(unescaped);
+            }
+        }
+        // Fallback: return the raw output
+        Ok(json.to_string())
     }
 }
