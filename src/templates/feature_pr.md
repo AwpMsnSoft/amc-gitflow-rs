@@ -1,4 +1,4 @@
-## Feature / 新功能: {short_name}
+## Feature / 新功能
 
 ---
 

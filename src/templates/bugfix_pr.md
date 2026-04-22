@@ -1,4 +1,4 @@
-## Bugfix / 问题修复: {short_name}
+## Bugfix / 问题修复
 
 ---
 
