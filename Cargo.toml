@@ -2,6 +2,12 @@
 name = "amc-gitflow-rs"
 version = "0.1.0"
 edition = "2024"
+authors = ["AwpMsnSoft <wgse-develop@awpmcncoft.anonaddy.com>"]
+description = "A personal customized Gitflow implementation in Rust, integrated with GitHub CLI (gh) to automate Pull Request and Release workflows."
+repository = "https://github.com/AwpMsnSoft/amc-gitflow-rs"
+license = "MIR OR Apache-2.0"
+keywords = ["gitflow", "git", "github", "gh", "automation"]
+categories = ["development-tools"]
 
 [dependencies]
 anyhow = "1.0.102"
