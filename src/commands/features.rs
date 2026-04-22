@@ -275,28 +275,8 @@ fn publish_feature(config: &GitflowConfig, name: Option<String>) -> Result<()> {
     info!("Creating pull request from '{branch_name}' into '{base_branch}'...");
 
     let pr_body = format!(
-        r"
-### What & Why
-- Summary:
-
-### Checklist
-- [ ] Single-purpose
-- [ ] Lint/format OK
-- [ ] Type hints added
-- [ ] Tests updated/passing
-- [ ] Docs updated (if needed)
-- [ ] Fixes # (optional)
-
-### Notes
-- Impact / alternatives / rollout:
-
-### Links
-- Issue: #{issue_number}
-- References: <urls>
-
-### Breaking Changes (if any)
-- Description & migration notes:
-",
+        include_str!("../templates/feature_pr.md"),
+        issue_number = issue_number
     );
     gh::pr::create(
         &pr_title,

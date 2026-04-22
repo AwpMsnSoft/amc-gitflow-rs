@@ -289,26 +289,8 @@ fn publish_bugfix(config: &GitflowConfig, name: Option<String>) -> Result<()> {
         "Creating pull request from '{branch_name}' into '{base_branch}'..."
     );
     let pr_body = format!(
-        r"
-### Bug Description
-- What is the current behavior?
-- What is the expected behavior?
-
-### Fix Approach
-- Why was this bug happening?
-- How was the bug resolved?
-
-### Checklist
-- [ ] Reproducible test case added
-- [ ] Lint/format OK
-- [ ] Type hints added
-- [ ] Tests updated/passing
-- [ ] Docs updated (if needed)
-
-### Links
-- Issue: #{issue_number}
-- References: <urls>
-",
+        include_str!("../templates/bugfix_pr.md"),
+        issue_number = issue_number
     );
     gh::pr::create(
         &pr_title,

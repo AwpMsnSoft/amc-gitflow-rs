@@ -265,24 +265,8 @@ fn publish_release(config: &GitflowConfig, name: Option<String>) -> Result<()> {
     info!("Creating pull request from '{branch_name}' into '{product_branch}'...");
 
     let pr_body = format!(
-        r"
-## Release {short_name}
-
-### Summary
-- 
-
-### Changelog
-- 
-
-### Checklist
-- [ ] Version bumped
-- [ ] All tests passing
-- [ ] Documentation updated (if needed)
-- [ ] Breaking changes documented (if any)
-
-### Notes
-- 
-",
+        include_str!("../templates/release_pr.md"),
+        short_name = short_name
     );
     gh::pr::create(
         &pr_title,
