@@ -1,5 +1,6 @@
 use anyhow::{Result, anyhow, bail};
 use clap::{Args, Subcommand};
+use try_map::FallibleMapExt;
 use velvetio::ask;
 
 use crate::commands::version::{BumpType, bump_version, get_current_version};
@@ -101,18 +102,21 @@ fn list_releases(config: &GitflowConfig, verbose: bool) -> Result<()> {
 fn start_release(config: &GitflowConfig, name: &str, base: Option<String>) -> Result<()> {
     let branch_name = format!("{prefix}{name}", prefix = config.get(ConfigKey::Release));
     let base_branch = base.unwrap_or_else(|| config.get(ConfigKey::Develop));
-    let active_releases = existing_release_branches(config)?;
 
     if git::branch::exists(&branch_name)? {
         bail!("Release branch '{branch_name}' already exists.");
     }
 
-    if !active_releases.is_empty() {
-        let first_active = &active_releases[0];
-        bail!(
-            "Another release branch already exists: '{first_active}'. Finish or delete it before starting a new release."
-        );
-    }
+    git::branch::list()?
+        .into_iter()
+        .filter(|branch| branch.starts_with(&config.get(ConfigKey::Release)))
+        .next()
+        .try_map(|existing| {
+            error!("Another release branch already exists: '{existing}'. Finish or delete it before starting a new release.");
+            Err::<(), _>(anyhow!(
+                "Another release branch already exists: '{existing}'. "
+            ))
+        })?;
 
     info!("Creating new release branch '{branch_name}' based on '{base_branch}'...");
     git::branch::create(&branch_name, &base_branch)?;
@@ -122,9 +126,21 @@ fn start_release(config: &GitflowConfig, name: &str, base: Option<String>) -> Re
 }
 
 fn finish_release(config: &mut GitflowConfig, name: Option<String>, auto: bool) -> Result<()> {
-    let branch_name = resolve_release_branch_name(config, name)?;
     let prefix = config.get(ConfigKey::Release);
-    let release_name = branch_name.strip_prefix(&prefix).unwrap_or(&branch_name);
+    let current = git::branch::current()?;
+    let branch_name = if let Some(n) = name {
+        format!("{prefix}{n}")
+    } else {
+        if !current.starts_with(&prefix) {
+            bail!("Current branch '{current}' is not a release branch and no name was provided.");
+        }
+        current
+    };
+
+    let release_name = branch_name
+        .strip_prefix(&prefix)
+        .into_anyresult()?
+        .replace('_', " ");
 
     // 1. Require a PR to have been created via `publish`
     let pr_number = get_private(PrivateConfigKey::Release(SubConfigKey::Pr(
@@ -231,10 +247,16 @@ fn finish_release(config: &mut GitflowConfig, name: Option<String>, auto: bool) 
 }
 
 fn publish_release(config: &GitflowConfig, name: Option<String>) -> Result<()> {
-    let branch_name = resolve_release_branch_name(config, name)?;
     let prefix = config.get(ConfigKey::Release);
-    let short_name = branch_name.strip_prefix(&prefix).unwrap_or(&branch_name);
-    let product_branch = config.get(ConfigKey::Product);
+    let current = git::branch::current()?;
+    let branch_name = if let Some(n) = name {
+        format!("{prefix}{n}")
+    } else {
+        if !current.starts_with(&prefix) {
+            bail!("Current branch '{current}' is not a release branch and no name was provided.");
+        }
+        current
+    };
 
     if !git::branch::exists(&branch_name)? {
         bail!("Release branch '{branch_name}' does not exist.");
@@ -261,6 +283,8 @@ fn publish_release(config: &GitflowConfig, name: Option<String>) -> Result<()> {
     }
 
     // Create a PR targeting the product branch (not develop!)
+    let product_branch = config.get(ConfigKey::Product);
+    let short_name = branch_name.strip_prefix(&prefix).into_anyresult()?;
     let pr_title = format!("release: {short_name}");
     info!("Creating pull request from '{branch_name}' into '{product_branch}'...");
 
@@ -316,26 +340,4 @@ fn track_release(config: &GitflowConfig, name: &str) -> Result<()> {
 
     success!("Successfully tracking release branch!");
     Ok(())
-}
-
-fn resolve_release_branch_name(config: &GitflowConfig, name: Option<String>) -> Result<String> {
-    let prefix = config.get(ConfigKey::Release);
-
-    if let Some(name) = name {
-        return Ok(format!("{prefix}{name}"));
-    }
-
-    let current = git::branch::current()?;
-    if !current.starts_with(&prefix) {
-        bail!("Current branch '{current}' is not a release branch and no name was provided.");
-    }
-
-    Ok(current)
-}
-
-fn existing_release_branches(config: &GitflowConfig) -> Result<Vec<String>> {
-    Ok(git::branch::list()?
-        .into_iter()
-        .filter(|branch| branch.starts_with(&config.get(ConfigKey::Release)))
-        .collect())
 }
